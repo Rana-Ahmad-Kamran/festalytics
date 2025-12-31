@@ -8,6 +8,17 @@ import Footer from './components/Footer'
 import VendorDashboard from './components/VendorDashboard'
 import UserDashboard from './components/UserDashboard'
 import SignupPage from './components/SignupPage'
+import CreateEvent from './components/create-event/CreateEvent'
+import ServiceDiscovery from './components/ServiceDiscovery'
+
+import FindMyDecor from './components/FindMyDecor'
+import AIPlanner from './components/ai-planner/AIPlanner'
+
+import MyEvents from './components/MyEvents'
+import ManageEvent from './components/ManageEvent'
+
+
+import ProtectedRoute from './components/ProtectedRoute'
 
 function App() {
   const [showLogin, setShowLogin] = useState(false)
@@ -16,6 +27,7 @@ function App() {
     <Router>
       <Routes>
         {/* Main landing page route */}
+
         <Route
           path="/"
           element={
@@ -31,9 +43,23 @@ function App() {
           }
         />
 
-        {/* Dashboard routes */}
-        <Route path="/vendor-dashboard" element={<VendorDashboard />} />
-        <Route path="/user-dashboard" element={<UserDashboard />} />
+        {/* Dashboard routes (Protected) */}
+        <Route
+          path="/vendor-dashboard"
+          element={
+            <ProtectedRoute allowedRole="vendor">
+              <VendorDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/user-dashboard"
+          element={
+            <ProtectedRoute allowedRole="user">
+              <UserDashboard />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/signup"
           element={
@@ -45,11 +71,69 @@ function App() {
             </>
           }
         />
+        <Route
+          path="/create-event"
+          element={
+            <ProtectedRoute allowedRole="user">
+              <CreateEvent />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/edit-event/:id"
+          element={
+            <ProtectedRoute allowedRole="user">
+              <CreateEvent />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/my-events"
+          element={
+            <ProtectedRoute allowedRole="user">
+              <MyEvents />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/manage-event/:eventId"
+          element={
+            <ProtectedRoute allowedRole="user">
+              <ManageEvent />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/service-discovery"
+          element={
+            <ProtectedRoute allowedRole="user">
+              <ServiceDiscovery />
+            </ProtectedRoute>
+          }
+        />
 
-        {/* Catch all - redirect to home */}
+        <Route
+          path="/find-decor"
+          element={
+            <ProtectedRoute allowedRole="user">
+              <FindMyDecor />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/ai-planner"
+          element={
+            <ProtectedRoute allowedRole="user">
+              <AIPlanner />
+            </ProtectedRoute>
+          }
+        />
+
+
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </Router>
+
+    </Router >
   )
 }
 

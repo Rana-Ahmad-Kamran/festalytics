@@ -1,47 +1,32 @@
-import { useNavigate } from 'react-router-dom'
-import { signOut } from 'firebase/auth'
-import { auth } from '../firebase'
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
+import { signOut } from 'firebase/auth';
+import { auth } from '../firebase';
 
-function VendorDashboard() {
-  const navigate = useNavigate()
+const VendorDashboard = () => {
+    const navigate = useNavigate();
 
-  const handleLogout = async () => {
-    try {
-      await signOut(auth)
-      navigate('/')
-    } catch (error) {
-      console.error('Logout error:', error)
-    }
-  }
+    const handleLogout = async () => {
+        try {
+            await signOut(auth);
+            navigate('/');
+        } catch (error) {
+            console.error("Error signing out: ", error);
+        }
+    };
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <h1 className="text-2xl font-bold text-gray-900">Vendor Dashboard</h1>
+    return (
+        <div className="min-h-screen bg-gray-50 flex flex-col justify-center items-center">
+            <h1 className="text-3xl font-bold mb-4">Vendor Dashboard</h1>
+            <p className="mb-8">Welcome, Vendor!</p>
             <button
-              onClick={handleLogout}
-              className="px-4 py-2 bg-[#D6336C] text-white rounded-lg hover:bg-[#C2255C] transition"
+                onClick={handleLogout}
+                className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition"
             >
-              Logout
+                Logout
             </button>
-          </div>
         </div>
-      </nav>
+    );
+};
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-xl font-semibold mb-4">Welcome to Vendor Dashboard</h2>
-          <p className="text-gray-600">
-            This is the vendor dashboard. You can manage your services and bookings here.
-          </p>
-        </div>
-      </main>
-    </div>
-  )
-}
-
-export default VendorDashboard
-
-
+export default VendorDashboard;
