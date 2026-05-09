@@ -7,6 +7,8 @@ import Login from './components/Login'
 import Footer from './components/Footer'
 import VendorDashboard from './components/VendorDashboard'
 import UserDashboard from './components/UserDashboard'
+import AllVenues from './components/AllVenues'
+import VenueDetails from './components/VenueDetails'
 import SignupPage from './components/SignupPage'
 import CreateEvent from './components/create-event/CreateEvent'
 import ServiceDiscovery from './components/ServiceDiscovery'
@@ -57,6 +59,22 @@ function App() {
           element={
             <ProtectedRoute allowedRole="user">
               <UserDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/all-venues"
+          element={
+            <ProtectedRoute allowedRole="user">
+              <AllVenues />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/venue/:id"
+          element={
+            <ProtectedRoute allowedRole="user">
+              <VenueDetails />
             </ProtectedRoute>
           }
         />

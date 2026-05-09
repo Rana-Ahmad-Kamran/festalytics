@@ -1,54 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sparkles, ArrowRight, Calendar, Clock, CheckCircle, Trash2, Search, MapPin, Star, Plus, Edit3 } from 'lucide-react';
+import { Sparkles, ArrowRight, Calendar, Clock, CheckCircle, Trash2, Search, Plus, Edit3 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import DashboardHeader from './DashboardHeader';
 import Footer from './Footer';
+import HallCard from './HallCard';
+import hallsData from '../data/halls.json';
 
 const UserDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [upcomingEvent, setUpcomingEvent] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
   const navigate = useNavigate();
 
-  // Mock Data for Venues (Static for now as per dashboard requirements)
-  const lahoreVenues = [
-    {
-      id: 1,
-      name: "Pearl Continental (PC) - Crystal Hall",
-      location: "Mall Road, Lahore",
-      rating: 5.0,
-      price: "$$$$",
-      match: "98%",
-      image: "https://images.unsplash.com/photo-1519167758481-83f550bb49b3?q=80&w=2698&auto=format&fit=crop"
-    },
-    {
-      id: 2,
-      name: "Royal Palm Golf & Country Club",
-      location: "Canal Road, Lahore",
-      rating: 4.8,
-      price: "$$$$",
-      match: "95%",
-      image: "https://images.unsplash.com/photo-1561587843-c7931c3bf714?q=80&w=2670&auto=format&fit=crop"
-    },
-    {
-      id: 3,
-      name: "Shehzadi Wedding Hall",
-      location: "Gulberg, Lahore",
-      rating: 4.7,
-      price: "$$$",
-      match: "92%",
-      image: "https://images.unsplash.com/photo-1544976735-85db9a751659?q=80&w=2669&auto=format&fit=crop"
-    },
-    {
-      id: 4,
-      name: "Mughal-e-Azam Banquet Hall",
-      location: "Garden Town, Lahore",
-      rating: 4.6,
-      price: "$$",
-      match: "89%",
-      image: "https://images.unsplash.com/photo-1520857014972-eaaaad765e77?q=80&w=2670&auto=format&fit=crop"
-    }
-  ];
+  const filteredHalls = hallsData.filter(hall => 
+    (hall.hall_name && hall.hall_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    (hall.full_address && hall.full_address.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    (hall.area && hall.area.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
 
   useEffect(() => {
     // Fetch from localStorage
@@ -162,8 +131,10 @@ const UserDashboard = () => {
                 </div>
                 <input
                   type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
                   className="flex-1 py-3.5 px-2 text-gray-700 placeholder-gray-400 bg-transparent border-none focus:ring-0 focus:outline-none"
-                  placeholder="Search for venues, florists, or photographers..."
+                  placeholder="Search for marriage halls by name or location..."
                 />
                 <button className="mr-2 p-2 bg-[#D6336C] rounded-full text-white hover:bg-[#B02A58] transition-colors">
                   <ArrowRight className="h-4 w-4" />
@@ -174,52 +145,40 @@ const UserDashboard = () => {
             {/* 3. Recommended Venues (Left - Bottom) */}
             <div className="pt-4">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-gray-900">Recommended Venues in Lahore</h2>
-                <a href="#" className="text-sm font-medium text-[#D6336C] hover:text-[#B02A58]">View All</a>
+                <h2 className="text-xl font-bold text-gray-900">Recommended Marriage Halls</h2>
+                <button 
+                  onClick={() => navigate('/all-venues')}
+                  className="text-sm font-medium text-[#D6336C] hover:text-[#B02A58] transition-colors flex items-center gap-1"
+                >
+                  View All <ArrowRight className="w-4 h-4" />
+                </button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {lahoreVenues.map((venue, index) => (
-                  <motion.div
-                    key={venue.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.1 }}
-                    className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow group"
-                  >
-                    {/* Image Container */}
-                    <div className="h-40 relative bg-gray-200">
-                      <img src={venue.image} alt={venue.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
-                      <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-lg text-xs font-bold text-[#D6336C] shadow-sm">
-                        {venue.match} Match
-                      </div>
-                    </div>
+              {filteredHalls.length > 0 ? (
+                <div className="flex overflow-x-auto gap-6 pb-6 snap-x snap-mandatory scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-transparent">
+                  {filteredHalls.slice(0, 10).map((hall, index) => {
+                    // Normalization & Dynamic Pathing logic as requested
+                    const normalizedName = hall.hall_name ? hall.hall_name.toLowerCase().trim() : '';
+                    
+                    // Use the pre-processed path if available, or generate it dynamically
+                    let dynamicImagePath = `/Marriage Hall/${normalizedName}/1.jpeg`;
+                    if (hall.images && hall.images.length > 0 && !hall.images[0].includes('placeholder')) {
+                      // Fix the path prefix from our earlier processData script to include the space
+                      dynamicImagePath = hall.images[0].replace('/Marriage_hall/', '/Marriage Hall/');
+                    }
 
-                    {/* Content */}
-                    <div className="p-4">
-                      <div className="flex justify-between items-start mb-2">
-                        <h3 className="text-sm font-bold text-gray-900 line-clamp-1 p-0 m-0">{venue.name}</h3>
-                        <div className="flex items-center gap-1 bg-gray-50 px-1.5 py-0.5 rounded text-xs font-semibold text-gray-700">
-                          <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
-                          {venue.rating}
-                        </div>
+                    return (
+                      <div key={hall.hall_id || index} className="min-w-[300px] w-[300px] md:min-w-[340px] md:w-[340px] snap-start shrink-0">
+                        <HallCard venue={hall} index={index} imagePath={dynamicImagePath} />
                       </div>
-
-                      <div className="flex items-center gap-1.5 text-gray-500 text-xs mb-3">
-                        <MapPin className="w-3.5 h-3.5" />
-                        <span className="line-clamp-1">{venue.location}</span>
-                      </div>
-
-                      <div className="flex items-center justify-between mt-3">
-                        <span className="text-sm font-medium text-gray-600">{venue.price}</span>
-                        <button className="text-xs font-bold text-gray-400 border border-gray-200 px-3 py-1.5 rounded-lg transition-colors group-hover:bg-[#D6336C] group-hover:text-white group-hover:border-[#D6336C]">
-                          View Details
-                        </button>
-                      </div>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-10 bg-gray-50 rounded-2xl border border-gray-100">
+                  <p className="text-gray-500">No marriage halls found matching your search.</p>
+                </div>
+              )}
             </div>
           </div>
 
