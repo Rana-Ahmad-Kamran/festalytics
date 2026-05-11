@@ -1,5 +1,8 @@
+"use client";
+
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { FaUser, FaStore, FaGoogle, FaTimes, FaUpload, FaFileImage, FaEnvelopeOpenText } from 'react-icons/fa';
 import { createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, updateProfile } from "firebase/auth";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
@@ -8,7 +11,7 @@ import { auth, db } from '../firebase';
 const SignupPage = () => {
     const [role, setRole] = useState('user');
     const [selectedFile, setSelectedFile] = useState(null);
-    const navigate = useNavigate();
+    const router = useRouter();
 
     // Form States
     const [firstName, setFirstName] = useState('');
@@ -22,7 +25,7 @@ const SignupPage = () => {
     const [cnic, setCnic] = useState('');
 
     const handleClose = () => {
-        navigate('/');
+        router.push('/');
     };
 
     const handleCnicInput = (e) => {
@@ -84,9 +87,9 @@ const SignupPage = () => {
 
             // 5. Navigation
             if (role === 'vendor') {
-                navigate('/vendor-dashboard');
+                router.push('/vendor-dashboard');
             } else {
-                navigate('/user-dashboard');
+                router.push('/user-dashboard');
             }
 
         } catch (error) {
@@ -109,7 +112,7 @@ const SignupPage = () => {
                 // Existing user - Check Role
                 const userData = userDocSnap.data();
                 if (userData.role === 'user') {
-                    navigate('/user-dashboard');
+                    router.push('/user-dashboard');
                 } else {
                     alert(`This account is registered as a ${userData.role}. Please login with the correct account type.`);
                 }
@@ -124,7 +127,7 @@ const SignupPage = () => {
                     role: 'user',
                     createdAt: serverTimestamp()
                 });
-                navigate('/user-dashboard');
+                router.push('/user-dashboard');
             }
         } catch (error) {
             console.error("Google Signup Error:", error);
@@ -292,7 +295,7 @@ const SignupPage = () => {
                     )}
 
                     <p className="text-center text-gray-400 text-xs mt-3">
-                        Already have an account? <button className="focus:outline-none"><Link to="/" className="text-[#D6336C] hover:underline font-medium">Log in</Link></button>
+                        Already have an account? <Link href="/" className="text-[#D6336C] hover:underline font-medium">Log in</Link>
                     </p>
                 </div>
             </div>

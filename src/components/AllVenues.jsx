@@ -1,5 +1,7 @@
+"use client";
+
 import React, { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
 import { ArrowLeft, Search, MapPin } from 'lucide-react';
 import { motion } from 'framer-motion';
 import DashboardHeader from './DashboardHeader';
@@ -8,7 +10,7 @@ import HallCard from './HallCard';
 import hallsData from '../data/halls.json';
 
 const AllVenues = () => {
-  const navigate = useNavigate();
+  const router = useRouter();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedLocation, setSelectedLocation] = useState('All');
 
@@ -37,7 +39,7 @@ const AllVenues = () => {
         {/* Header & Back Button */}
         <div className="flex items-center gap-4 mb-8">
           <button 
-            onClick={() => navigate(-1)}
+            onClick={() => router.back()}
             className="p-2 bg-white rounded-full shadow-sm hover:bg-gray-100 transition-colors"
           >
             <ArrowLeft className="w-5 h-5 text-gray-600" />
@@ -97,9 +99,9 @@ const AllVenues = () => {
               const normalizedName = hall.hall_name ? hall.hall_name.toLowerCase().trim() : '';
               
               // Use the pre-processed path if available, or generate it dynamically
-              let dynamicImagePath = `/Marriage Hall/${normalizedName}/1.jpeg`;
+              let dynamicImagePath = `/Marriage_hall/${normalizedName}/1.jpeg`;
               if (hall.images && hall.images.length > 0 && !hall.images[0].includes('placeholder')) {
-                dynamicImagePath = hall.images[0].replace('/Marriage_hall/', '/Marriage Hall/');
+                dynamicImagePath = hall.images[0].replace('/Marriage Hall/', '/Marriage_hall/');
               }
 
               return (

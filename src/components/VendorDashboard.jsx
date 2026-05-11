@@ -1,15 +1,17 @@
+"use client";
+
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
 import { signOut } from 'firebase/auth';
 import { auth } from '../firebase';
 
 const VendorDashboard = () => {
-    const navigate = useNavigate();
+    const router = useRouter();
 
     const handleLogout = async () => {
         try {
             await signOut(auth);
-            navigate('/');
+            router.push('/');
         } catch (error) {
             console.error("Error signing out: ", error);
         }

@@ -1,12 +1,14 @@
+'use client'
+
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useRouter } from 'next/navigation'
 import { FaBolt, FaRocket, FaStar, FaLightbulb, FaCalendarCheck, FaChartLine, FaUserCog, FaArrowRight } from 'react-icons/fa'
 import image1 from '../assets/image1.jpg'
 import image2 from '../assets/image2.jpg'
 
 function LandingPage({ onLoginClick }) {
   const [isImage1, setIsImage1] = useState(true)
-  const navigate = useNavigate()
+  const router = useRouter()
 
   const handleImageToggle = () => {
     setIsImage1(prev => !prev)
@@ -22,11 +24,11 @@ function LandingPage({ onLoginClick }) {
         {/* Background image layers for smooth fade transition */}
         <div
           className={`absolute inset-0 bg-cover bg-center bg-no-repeat transition-opacity duration-[800ms] ease-in-out z-0 ${isImage1 ? 'opacity-100' : 'opacity-0'}`}
-          style={{ backgroundImage: `url(${image1})` }}
+          style={{ backgroundImage: `url(${image1.src})` }}
         ></div>
         <div
           className={`absolute inset-0 bg-cover bg-center bg-no-repeat transition-opacity duration-[800ms] ease-in-out z-0 ${!isImage1 ? 'opacity-100' : 'opacity-0'}`}
-          style={{ backgroundImage: `url(${image2})` }}
+          style={{ backgroundImage: `url(${image2.src})` }}
         ></div>
         <div className="max-w-[1200px] my-[50px] mx-auto p-8 grid grid-cols-1 md:grid-cols-2 gap-24 items-center relative z-[2] max-lg:grid-cols-1 max-lg:text-center max-lg:gap-12">
           <div className="text-white">
@@ -55,7 +57,7 @@ function LandingPage({ onLoginClick }) {
                 className="py-3.5 px-8 rounded-[50px] text-base font-semibold cursor-pointer transition-all duration-300 no-underline inline-block bg-transparent text-white border-2 border-white md:hover:bg-[#C2255C] md:hover:text-white md:hover:border-[#C2255C] md:hover:-translate-y-0.5 active:bg-[#C2255C] active:text-white active:border-[#C2255C] active:-translate-y-0.5 max-sm:w-1/2 max-sm:flex-none"
                 onClick={(e) => {
                   e.stopPropagation()
-                  navigate('/signup')
+                  router.push('/signup')
                 }}
               >
                 Signup

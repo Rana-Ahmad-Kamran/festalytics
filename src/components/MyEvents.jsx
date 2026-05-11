@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Plus, Calendar, MapPin, Edit3, Trash2 } from 'lucide-react';
 import DashboardHeader from './DashboardHeader';
 import Footer from './Footer';
 
 const MyEvents = () => {
-    const navigate = useNavigate();
+    const router = useRouter();
     const [events, setEvents] = useState([]);
 
     useEffect(() => {
@@ -34,7 +34,7 @@ const MyEvents = () => {
                         <p className="text-gray-500 mt-1">Manage all your upcoming and past events.</p>
                     </div>
                     <button
-                        onClick={() => navigate('/create-event')}
+                        onClick={() => router.push('/create-event')}
                         className="flex items-center gap-2 bg-[#D6336C] text-white px-5 py-2.5 rounded-xl font-bold shadow-lg shadow-pink-200 hover:brightness-110 transition-all active:scale-95"
                     >
                         <Plus className="w-5 h-5" />
@@ -51,7 +51,7 @@ const MyEvents = () => {
                         <h3 className="text-xl font-bold text-gray-900 mb-2">No Events Found</h3>
                         <p className="text-gray-500 mb-8 max-w-md">You haven't created any events yet. Start planning your first event now!</p>
                         <button
-                            onClick={() => navigate('/create-event')}
+                            onClick={() => router.push('/create-event')}
                             className="bg-[#D6336C] text-white px-8 py-3 rounded-xl font-bold hover:brightness-110 transition-colors"
                         >
                             Create Your First Event
@@ -64,7 +64,7 @@ const MyEvents = () => {
                                 key={event.id}
                                 initial={{ opacity: 0, y: 20 }}
                                 animate={{ opacity: 1, y: 0 }}
-                                onClick={() => navigate(`/manage-event/${event.id}`)}
+                                onClick={() => router.push(`/manage-event/${event.id}`)}
                                 className="bg-white border border-gray-100 rounded-3xl overflow-hidden shadow-sm hover:shadow-md transition-all group flex flex-col h-full cursor-pointer relative"
                             >
                                 {/* Card Image */}
@@ -101,7 +101,7 @@ const MyEvents = () => {
 
                                     <div className="mt-auto flex items-center gap-3 pt-4 border-t border-gray-50">
                                         <button
-                                            onClick={(e) => { e.stopPropagation(); navigate(`/edit-event/${event.id}`); }}
+                                            onClick={(e) => { e.stopPropagation(); router.push(`/edit-event/${event.id}`); }}
                                             className="flex-1 bg-gray-50 text-gray-700 border border-gray-200 rounded-xl py-2.5 font-bold hover:bg-gray-100 transition-colors flex items-center justify-center gap-2"
                                         >
                                             <Edit3 className="w-4 h-4" /> Edit

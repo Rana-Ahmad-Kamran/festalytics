@@ -1,10 +1,10 @@
 import React from 'react';
 import { ArrowRight, Info, MapPin, Users, Save } from 'lucide-react';
 import { VENUES, VENDORS } from '../data';
-import { useNavigate } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
 
 const Review = ({ eventData, onNext, isEditing }) => {
-    const navigate = useNavigate();
+    const router = useRouter();
 
     const getVenue = () => VENUES.find(v => v.id === eventData.selectedVenueId);
 

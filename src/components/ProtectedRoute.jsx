@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
@@ -8,7 +8,7 @@ const ProtectedRoute = ({ children, allowedRole }) => {
     const [loading, setLoading] = useState(true);
     const [user, setUser] = useState(null);
     const [isAuthorized, setIsAuthorized] = useState(false);
-    const navigate = useNavigate();
+    const router = useRouter();
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -48,7 +48,7 @@ const ProtectedRoute = ({ children, allowedRole }) => {
         });
 
         return () => unsubscribe();
-    }, [allowedRole, navigate]);
+    }, [allowedRole, router]);
 
     if (loading) {
         return (
@@ -59,14 +59,13 @@ const ProtectedRoute = ({ children, allowedRole }) => {
     }
 
     if (!user) {
-        return <Navigate to="/" replace />;
+        router.push('/');
+        return null;
     }
 
     if (!isAuthorized) {
-        // Redirect to the correct dashboard if possible, or home
-        // This assumes simple logic: if you are not authorized here, go home.
-        // Or we could try to redirect to the *other* dashboard, but keep it simple.
-        return <Navigate to="/" replace />;
+        router.push('/');
+        return null;
     }
 
     return children;

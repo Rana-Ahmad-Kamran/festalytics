@@ -1,22 +1,27 @@
+"use client";
+
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
 import { Star, MapPin } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const HallCard = ({ venue, index, imagePath }) => {
-  const navigate = useNavigate();
+  const router = useRouter();
+  const [match, setMatch] = React.useState('90%');
+  const [rating, setRating] = React.useState('4.5');
 
-  // Use dynamically passed imagePath prop as requested
-  const imageSrc = imagePath || '/images/placeholder-hall.jpg';
+  React.useEffect(() => {
+    // Set random values only on client to avoid hydration mismatch
+    setMatch(venue.match || `${Math.floor(Math.random() * 20) + 80}%`);
+    setRating(venue.rating || (Math.random() * (5.0 - 4.0) + 4.0).toFixed(1));
+  }, [venue.match, venue.rating]);
 
-  // Randomize a match percentage for UI if not present
-  const match = venue.match || `${Math.floor(Math.random() * 20) + 80}%`;
-  // Default rating if not present
-  const rating = venue.rating || (Math.random() * (5.0 - 4.0) + 4.0).toFixed(1);
+  // Use dynamically passed imagePath prop, ensuring underscore for the main folder
+  const imageSrc = (imagePath || '/images/placeholder-hall.jpg').replace('/Marriage Hall/', '/Marriage_hall/');
 
   const handleCardClick = () => {
     const venueId = venue.hall_id || venue.hall_name.toLowerCase().replace(/\s+/g, '-');
-    navigate(`/venue/${venueId}`);
+    router.push(`/venue/${venueId}`);
   };
 
   return (

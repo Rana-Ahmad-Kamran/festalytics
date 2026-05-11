@@ -19,7 +19,7 @@ function Navbar() {
         <div className="flex items-center">
           <a href="/" className="flex items-center no-underline transition-opacity duration-300 hover:opacity-80" aria-label="Home">
             <img
-              src={festalyticsLogo}
+              src={festalyticsLogo.src}
               alt="Festalytics"
               className="h-10 w-auto object-contain"
             />

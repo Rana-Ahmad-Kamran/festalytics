@@ -1,5 +1,7 @@
+"use client";
+
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useRouter } from 'next/navigation'
 import {
   signInWithEmailAndPassword,
   setPersistence,
@@ -9,10 +11,10 @@ import {
 } from 'firebase/auth'
 import { doc, getDoc } from 'firebase/firestore'
 import { auth, db } from '../firebase'
-import { FaStore, FaUser } from 'react-icons/fa' // Import React Icons
+import { FaStore, FaUser } from 'react-icons/fa'
 
 function Login({ onClose }) {
-  const navigate = useNavigate()
+  const router = useRouter()
   const [loginType, setLoginType] = useState(null) // null, 'vendor', or 'user'
   const [formData, setFormData] = useState({
     email: '',
@@ -97,9 +99,9 @@ function Login({ onClose }) {
         setTimeout(() => {
           setLoading(false)
           if (loginType === 'vendor') {
-            navigate('/vendor-dashboard')
+            router.push('/vendor-dashboard')
           } else {
-            navigate('/user-dashboard')
+            router.push('/user-dashboard')
           }
           if (onClose) onClose()
         }, 1000)
@@ -136,7 +138,7 @@ function Login({ onClose }) {
         setSuccess('Login successful (No Profile)! Redirecting...')
         setTimeout(() => {
           setLoading(false)
-          navigate(loginType === 'vendor' ? '/vendor-dashboard' : '/user-dashboard')
+          router.push(loginType === 'vendor' ? '/vendor-dashboard' : '/user-dashboard')
           if (onClose) onClose()
         }, 1000)
       }
@@ -284,7 +286,7 @@ function Login({ onClose }) {
                   className="text-[#D6336C] cursor-pointer hover:underline font-semibold"
                   onClick={() => {
                     if (onClose) onClose();
-                    navigate('/signup');
+                    router.push('/signup');
                   }}
                 >Sign up</span>
               </p>

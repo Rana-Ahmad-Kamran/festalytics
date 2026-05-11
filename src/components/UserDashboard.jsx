@@ -1,5 +1,7 @@
+"use client";
+
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
 import { Sparkles, ArrowRight, Calendar, Clock, CheckCircle, Trash2, Search, Plus, Edit3 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import DashboardHeader from './DashboardHeader';
@@ -11,7 +13,7 @@ const UserDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [upcomingEvent, setUpcomingEvent] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const navigate = useNavigate();
+  const router = useRouter();
 
   const filteredHalls = hallsData.filter(hall => 
     (hall.hall_name && hall.hall_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
@@ -93,7 +95,7 @@ const UserDashboard = () => {
           <motion.button
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.95 }}
-            onClick={() => navigate('/create-event')}
+            onClick={() => router.push('/create-event')}
             className="flex items-center gap-2 bg-gradient-to-r from-[#D6336C] to-[#B02A58] text-white px-5 py-2.5 rounded-full text-sm font-medium shadow-md shadow-[#D6336C]/20 transition-all cursor-pointer"
           >
             <Plus className="w-4 h-4" />
@@ -147,7 +149,7 @@ const UserDashboard = () => {
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-bold text-gray-900">Recommended Marriage Halls</h2>
                 <button 
-                  onClick={() => navigate('/all-venues')}
+                  onClick={() => router.push('/all-venues')}
                   className="text-sm font-medium text-[#D6336C] hover:text-[#B02A58] transition-colors flex items-center gap-1"
                 >
                   View All <ArrowRight className="w-4 h-4" />
@@ -161,10 +163,9 @@ const UserDashboard = () => {
                     const normalizedName = hall.hall_name ? hall.hall_name.toLowerCase().trim() : '';
                     
                     // Use the pre-processed path if available, or generate it dynamically
-                    let dynamicImagePath = `/Marriage Hall/${normalizedName}/1.jpeg`;
+                    let dynamicImagePath = `/Marriage_hall/${normalizedName}/1.jpeg`;
                     if (hall.images && hall.images.length > 0 && !hall.images[0].includes('placeholder')) {
-                      // Fix the path prefix from our earlier processData script to include the space
-                      dynamicImagePath = hall.images[0].replace('/Marriage_hall/', '/Marriage Hall/');
+                      dynamicImagePath = hall.images[0].replace('/Marriage Hall/', '/Marriage_hall/');
                     }
 
                     return (
@@ -202,7 +203,7 @@ const UserDashboard = () => {
                     </span>
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => navigate(`/edit-event/${upcomingEvent.id}`)}
+                        onClick={() => router.push(`/edit-event/${upcomingEvent.id}`)}
                         className="p-2 rounded-full text-gray-400 hover:text-[#D6336C] hover:bg-pink-50 transition-colors"
                         title="Edit Event"
                       >
@@ -225,7 +226,7 @@ const UserDashboard = () => {
 
                   {/* AI Planner CTA */}
                   <button
-                    onClick={() => navigate('/ai-planner')}
+                    onClick={() => router.push('/ai-planner')}
                     className="w-full mb-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white py-2 rounded-xl text-sm font-bold shadow-lg shadow-indigo-100 flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
                   >
                     <Sparkles className="w-4 h-4" />
@@ -252,7 +253,7 @@ const UserDashboard = () => {
                   <h3 className="text-base font-bold text-gray-900 mb-1">No Upcoming Events</h3>
                   <p className="text-sm text-gray-500 mb-4">Ready to start planning your big day?</p>
                   <button
-                    onClick={() => navigate('/create-event')}
+                    onClick={() => router.push('/create-event')}
                     className="text-sm font-medium text-[#D6336C] border border-[#D6336C] px-4 py-2 rounded-full hover:bg-[#D6336C] hover:text-white transition-all"
                   >
                     Start Planning

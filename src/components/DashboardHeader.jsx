@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useRouter, usePathname } from 'next/navigation';
 import { signOut, onAuthStateChanged } from 'firebase/auth'; // Import auth listener
 import { auth } from '../firebase';
 import { LogOut, User as UserIcon, Sparkles, Bell, Menu, X, Sun, SunDim, Moon, Palette } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const DashboardHeader = () => {
-    const navigate = useNavigate();
-    const location = useLocation();
+    const router = useRouter();
+    const pathname = usePathname();
     const [user, setUser] = useState(null);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [showLogoutModal, setShowLogoutModal] = useState(false);
@@ -33,19 +33,19 @@ const DashboardHeader = () => {
     const confirmLogout = async () => {
         try {
             await signOut(auth);
-            navigate('/');
+            router.push('/');
         } catch (error) {
             console.error("Logout Error: ", error);
         }
         setShowLogoutModal(false);
     };
 
-    const isActive = (path) => location.pathname === path;
+    const isActive = (path) => pathname === path;
     const displayName = user?.displayName || 'User';
 
     const NavLink = ({ path, label, icon: Icon }) => (
         <button
-            onClick={() => navigate(path)}
+            onClick={() => router.push(path)}
             className={`font-medium transition-colors flex items-center gap-1 ${isActive(path) ? 'text-[#D6336C] font-bold relative after:content-[""] after:absolute after:-bottom-2 after:left-0 after:w-full after:h-0.5 after:bg-[#D6336C]' : 'text-gray-500 hover:text-gray-900'}`}
         >
             {Icon && <Icon className={`w-3 h-3 ${isActive(path) ? 'text-[#D6336C]' : 'text-gray-400 group-hover:text-gray-600'}`} />}
@@ -68,7 +68,7 @@ const DashboardHeader = () => {
                             {isMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
                         </button>
 
-                        <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/user-dashboard')}>
+                        <div className="flex items-center gap-2 cursor-pointer" onClick={() => router.push('/user-dashboard')}>
                             <div className="w-10 h-10 rounded-xl flex items-center justify-center transform rotate-3 shadow-lg" style={{ backgroundColor: '#D6336C' }}>
                                 <Sparkles className="w-6 h-6 text-white" />
                             </div>
@@ -142,10 +142,10 @@ const DashboardHeader = () => {
             {/* Mobile Menu Overlay */}
             {isMenuOpen && (
                 <div className="md:hidden absolute top-20 left-0 w-full bg-white border-b border-gray-100 shadow-xl py-4 px-6 flex flex-col gap-4 animate-in slide-in-from-top-2 duration-200 z-40">
-                    <button onClick={() => navigate('/user-dashboard')} className={`text-left font-medium py-2 pl-4 rounded-md ${isActive('/user-dashboard') ? 'text-[#D6336C] bg-pink-50 border-l-4 border-[#D6336C]' : 'text-gray-600 hover:bg-gray-50'}`}>Dashboard</button>
-                    <button onClick={() => navigate('/create-event')} className={`text-left font-medium py-2 pl-4 rounded-md ${isActive('/create-event') ? 'text-[#D6336C] bg-pink-50 border-l-4 border-[#D6336C]' : 'text-gray-600 hover:bg-gray-50'}`}>My Events</button>
-                    <button onClick={() => navigate('/service-discovery')} className={`text-left font-medium py-2 pl-4 rounded-md ${isActive('/service-discovery') ? 'text-[#D6336C] bg-pink-50 border-l-4 border-[#D6336C]' : 'text-gray-600 hover:bg-gray-50'}`}>Vendors</button>
-                    <button onClick={() => navigate('/ai-planner')} className={`text-left font-medium py-2 pl-4 rounded-md ${isActive('/ai-planner') ? 'text-[#D6336C] bg-pink-50 border-l-4 border-[#D6336C]' : 'text-gray-600 hover:bg-gray-50'}`}>AI Planner</button>
+                    <button onClick={() => router.push('/user-dashboard')} className={`text-left font-medium py-2 pl-4 rounded-md ${isActive('/user-dashboard') ? 'text-[#D6336C] bg-pink-50 border-l-4 border-[#D6336C]' : 'text-gray-600 hover:bg-gray-50'}`}>Dashboard</button>
+                    <button onClick={() => router.push('/create-event')} className={`text-left font-medium py-2 pl-4 rounded-md ${isActive('/create-event') ? 'text-[#D6336C] bg-pink-50 border-l-4 border-[#D6336C]' : 'text-gray-600 hover:bg-gray-50'}`}>My Events</button>
+                    <button onClick={() => router.push('/service-discovery')} className={`text-left font-medium py-2 pl-4 rounded-md ${isActive('/service-discovery') ? 'text-[#D6336C] bg-pink-50 border-l-4 border-[#D6336C]' : 'text-gray-600 hover:bg-gray-50'}`}>Vendors</button>
+                    <button onClick={() => router.push('/ai-planner')} className={`text-left font-medium py-2 pl-4 rounded-md ${isActive('/ai-planner') ? 'text-[#D6336C] bg-pink-50 border-l-4 border-[#D6336C]' : 'text-gray-600 hover:bg-gray-50'}`}>AI Planner</button>
                     <div className="border-t border-gray-100 my-2"></div>
                     <button
                         onClick={() => setShowLogoutModal(true)}

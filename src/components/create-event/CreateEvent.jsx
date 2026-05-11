@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowRight, CheckCircle } from 'lucide-react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useRouter, useParams } from 'next/navigation';
 
 import DashboardHeader from '../DashboardHeader';
 import Footer from '../Footer';
@@ -18,7 +18,7 @@ import Timeline from './steps/Timeline';
 import Review from './steps/Review';
 
 const CreateEvent = () => {
-    const navigate = useNavigate();
+    const router = useRouter();
     const { id } = useParams();
     const [step, setStep] = useState(1);
 
@@ -69,7 +69,7 @@ const CreateEvent = () => {
                 };
                 localStorage.setItem('festalytics_events', JSON.stringify([...events, newEvent]));
             }
-            navigate('/my-events');
+            router.push('/my-events');
             return;
         }
         setStep(prev => prev + 1);

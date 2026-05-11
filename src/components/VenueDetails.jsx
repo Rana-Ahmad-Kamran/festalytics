@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Star, MapPin, Users, DollarSign, CheckCircle, Phone, Info } from 'lucide-react';
 import { motion } from 'framer-motion';
 import DashboardHeader from './DashboardHeader';
@@ -8,9 +8,10 @@ import hallsData from '../data/halls.json';
 
 const VenueDetails = () => {
   const { id } = useParams();
-  const navigate = useNavigate();
+  const router = useRouter();
   const [venue, setVenue] = useState(null);
   const [activeImage, setActiveImage] = useState(0);
+  const [rating, setRating] = useState('4.5');
 
   useEffect(() => {
     // Find venue by ID or slugified Name
@@ -21,12 +22,18 @@ const VenueDetails = () => {
     setVenue(foundVenue);
   }, [id]);
 
+  useEffect(() => {
+    if (venue) {
+      setRating(venue.rating || (Math.random() * (5.0 - 4.0) + 4.0).toFixed(1));
+    }
+  }, [venue]);
+
   if (!venue) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Venue not found</h2>
-          <button onClick={() => navigate(-1)} className="text-[#D6336C] font-semibold hover:underline">
+          <button onClick={() => router.back()} className="text-[#D6336C] font-semibold hover:underline">
             Go back
           </button>
         </div>
@@ -34,12 +41,10 @@ const VenueDetails = () => {
     );
   }
 
-  // Pre-process images
+  // Pre-process images to fix pathing
   const images = venue.images && venue.images.length > 0 
-    ? venue.images 
+    ? venue.images.map(img => img.replace('/Marriage Hall/', '/Marriage_hall/'))
     : ['/images/placeholder-hall.jpg'];
-
-  const rating = venue.rating || (Math.random() * (5.0 - 4.0) + 4.0).toFixed(1);
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans text-slate-800">
@@ -48,7 +53,7 @@ const VenueDetails = () => {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Back Button */}
         <button 
-          onClick={() => navigate(-1)}
+          onClick={() => router.back()}
           className="flex items-center gap-2 text-gray-500 hover:text-gray-900 mb-6 font-medium transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
