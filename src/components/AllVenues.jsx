@@ -22,10 +22,10 @@ const AllVenues = () => {
   }, []);
 
   const filteredHalls = hallsData.filter(hall => {
-    const matchesSearch = 
+    const matchesSearch =
       (hall.hall_name && hall.hall_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (hall.full_address && hall.full_address.toLowerCase().includes(searchTerm.toLowerCase()));
-    
+
     const matchesLocation = selectedLocation === 'All' || (hall.area || 'Lahore') === selectedLocation;
 
     return matchesSearch && matchesLocation;
@@ -38,7 +38,7 @@ const AllVenues = () => {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         {/* Header & Back Button */}
         <div className="flex items-center gap-4 mb-8">
-          <button 
+          <button
             onClick={() => router.back()}
             className="p-2 bg-white rounded-full shadow-sm hover:bg-gray-100 transition-colors"
           >
@@ -97,7 +97,7 @@ const AllVenues = () => {
             {filteredHalls.map((hall, index) => {
               // Normalization & Dynamic Pathing logic as requested
               const normalizedName = hall.hall_name ? hall.hall_name.toLowerCase().trim() : '';
-              
+
               // Use the pre-processed path if available, or generate it dynamically
               let dynamicImagePath = `/Marriage_hall/${normalizedName}/1.jpeg`;
               if (hall.images && hall.images.length > 0 && !hall.images[0].includes('placeholder')) {
@@ -116,7 +116,7 @@ const AllVenues = () => {
             </div>
             <h3 className="text-lg font-bold text-gray-900 mb-1">No venues found</h3>
             <p className="text-gray-500">Try adjusting your search or location filter.</p>
-            <button 
+            <button
               onClick={() => { setSearchTerm(''); setSelectedLocation('All'); }}
               className="mt-4 text-[#D6336C] font-semibold hover:underline"
             >

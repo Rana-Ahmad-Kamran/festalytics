@@ -2,7 +2,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 
-const BookingFilters = () => {
+const BookingFilters = ({ onNewBooking }) => {
     return (
         <div className="bg-surface-container rounded-3xl p-6 flex flex-col xl:flex-row gap-6 items-center justify-between shadow-inner">
             <div className="flex flex-col sm:flex-row gap-4 w-full xl:w-auto">
@@ -55,9 +55,10 @@ const BookingFilters = () => {
                 </div>
 
                 <motion.button 
+                    onClick={onNewBooking}
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
-                    className="bg-primary text-on-primary px-8 py-4 rounded-full font-black text-xs tracking-[0.2em] flex items-center gap-2 shadow-[0_8px_24px_rgba(224,64,160,0.3)] bouncy-microinteraction"
+                    className="bg-primary text-on-primary px-8 py-4 rounded-full font-black text-xs tracking-[0.2em] flex items-center gap-2 shadow-[0_8px_24px_rgba(224,64,160,0.3)] bouncy-microinteraction cursor-pointer"
                 >
                     <span className="material-symbols-outlined">add</span>
                     NEW BOOKING

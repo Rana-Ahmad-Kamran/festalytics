@@ -2,6 +2,8 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 
+import Link from 'next/link';
+
 const ServiceCard = ({ title, category, price, bookings, rating, status, imageUrl, badgeColor }) => {
     const statusConfig = {
         Active: { icon: 'fiber_manual_record', color: 'bg-green-500', pulse: true },
@@ -32,7 +34,9 @@ const ServiceCard = ({ title, category, price, bookings, rating, status, imageUr
                 
                 {/* Hover Actions Overlay */}
                 <div className="absolute inset-0 bg-primary/20 backdrop-blur-[2px] flex items-center justify-center gap-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                    <button className="w-12 h-12 bg-white text-primary rounded-full flex items-center justify-center shadow-xl hover:scale-110 transition-transform"><span className="material-symbols-outlined">edit</span></button>
+                    <Link href="/vendor-dashboard/my-services/edit" className="w-12 h-12 bg-white text-primary rounded-full flex items-center justify-center shadow-xl hover:scale-110 transition-transform">
+                        <span className="material-symbols-outlined">edit</span>
+                    </Link>
                     <button className="w-12 h-12 bg-white text-tertiary rounded-full flex items-center justify-center shadow-xl hover:scale-110 transition-transform"><span className="material-symbols-outlined">visibility</span></button>
                     <button className="w-12 h-12 bg-white text-error rounded-full flex items-center justify-center shadow-xl hover:scale-110 transition-transform"><span className="material-symbols-outlined">delete</span></button>
                 </div>
