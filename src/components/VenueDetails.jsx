@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Star, MapPin, Users, DollarSign, CheckCircle, Phone, Info } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import DashboardHeader from './DashboardHeader';
 import Footer from './Footer';
 import hallsData from '../data/halls.json';
+import { db } from "../firebase";
+import { doc, getDoc } from "firebase/firestore";
 
 const VenueDetails = () => {
   const { id } = useParams();
@@ -28,6 +30,40 @@ const VenueDetails = () => {
     }
   }, [venue]);
 
+  const [dbVenue, setDbVenue] = useState(null);
+  const [loadingDb, setLoadingDb] = useState(true);
+
+  // Dynamic Cost Estimation Engine states
+  const [guestsCount, setGuestsCount] = useState(150);
+  const [selectedPkgId, setSelectedPkgId] = useState("");
+  const [includeAC, setIncludeAC] = useState(true);
+  const [includeGenerator, setIncludeGenerator] = useState(true);
+  
+  const [includeDecor, setIncludeDecor] = useState(false);
+  const [includeSound, setIncludeSound] = useState(false);
+  const [includeSecurity, setIncludeSecurity] = useState(false);
+
+  useEffect(() => {
+    const fetchDbVenue = async () => {
+      try {
+        const docRef = doc(db, "venues", "grand-azure-ballroom");
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setDbVenue(data);
+          if (data.cateringPackages && data.cateringPackages.length > 0) {
+            setSelectedPkgId(data.cateringPackages[0].id);
+          }
+        }
+      } catch (err) {
+        console.error("Error reading Firestore in client: ", err);
+      } finally {
+        setLoadingDb(false);
+      }
+    };
+    fetchDbVenue();
+  }, []);
+
   if (!venue) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -41,10 +77,59 @@ const VenueDetails = () => {
     );
   }
 
-  // Pre-process images to fix pathing
-  const images = venue.images && venue.images.length > 0 
-    ? venue.images.map(img => img.replace('/Marriage Hall/', '/Marriage_hall/'))
-    : ['/images/placeholder-hall.jpg'];
+  // Operational Pricing and Catering Tiers (from Firestore DB or default fallback templates)
+  const activePricing = dbVenue?.pricing || {
+    hallRent: 2800,
+    acCost: 500,
+    generatorCost: 350,
+    decorAvailable: true,
+    decorPrice: 1200,
+    soundAvailable: true,
+    soundPrice: 850,
+    securityAvailable: true,
+    securityPrice: 400
+  };
+
+  const activePackages = dbVenue?.cateringPackages || [
+    {
+      id: 'pkg-1',
+      name: "Barat Luxury Menu",
+      type: "Barat",
+      perPlatePrice: 45,
+      dishes: ["Chicken Biryani", "Mutton Qorma", "Raita & Salad", "Assorted Naan", "Shahi Kheer"]
+    },
+    {
+      id: 'pkg-2',
+      name: "Mehndi Feast Chicken Menu",
+      type: "Chicken",
+      perPlatePrice: 32,
+      dishes: ["Chicken Pulao", "Chicken Seekh Kabab", "Fresh Salad", "Mint Raita", "Jalebi"]
+    },
+    {
+      id: 'pkg-3',
+      name: "Royal Mutton Walima Menu",
+      type: "Mutton",
+      perPlatePrice: 65,
+      dishes: ["Mutton Mandi", "Mutton Karahi", "Hummus & Pita", "Special Salad", "Shahi Tukray"]
+    }
+  ];
+
+  // Derived calculation variables for estimation engine
+  const selectedPkg = activePackages.find(p => p.id === selectedPkgId) || activePackages[0];
+  const baseRent = activePricing.hallRent || 0;
+  const cateringCost = selectedPkg ? (selectedPkg.perPlatePrice * guestsCount) : 0;
+  const utilitiesCost = (includeAC ? activePricing.acCost : 0) + (includeGenerator ? activePricing.generatorCost : 0);
+  const addonsCost = (includeDecor && activePricing.decorAvailable ? activePricing.decorPrice : 0) + 
+                     (includeSound && activePricing.soundAvailable ? activePricing.soundPrice : 0) + 
+                     (includeSecurity && activePricing.securityAvailable ? activePricing.securityPrice : 0);
+  const totalEstimation = baseRent + cateringCost + utilitiesCost + addonsCost;
+
+  // Pre-process images to fix pathing (load from Firestore if custom reordering was saved)
+  const images = dbVenue?.images && dbVenue.images.length > 0 
+    ? dbVenue.images.map(img => img.url)
+    : (venue.images && venue.images.length > 0 
+        ? venue.images.map(img => img.replace('/Marriage Hall/', '/Marriage_hall/'))
+        : ['/images/placeholder-hall.jpg']);
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans text-slate-800">
@@ -149,39 +234,191 @@ const VenueDetails = () => {
           <div className="lg:col-span-1">
             <div className="sticky top-24 space-y-6">
               
-              {/* Booking/Price Card */}
-              <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
-                <div className="mb-6 pb-6 border-b border-gray-100">
-                  <p className="text-sm text-gray-500 font-medium mb-1">Starting from</p>
-                  <h3 className="text-3xl font-bold text-[#D6336C]">
-                    {venue.price_range ? venue.price_range.split(' ')[1] || venue.price_range : 'Contact'}
-                  </h3>
-                  <p className="text-sm text-gray-400 mt-1">per head (approx)</p>
+              {/* Automated Cost Estimation Engine */}
+              <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 space-y-6">
+                <div className="border-b border-gray-100 pb-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"></span>
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Live Cost Estimator</span>
+                  </div>
+                  <h3 className="text-xl font-black text-gray-900 tracking-tight">Automated Quote Engine</h3>
+                  <p className="text-xs text-gray-400">Configure logistics for an instant, error-free total breakdown.</p>
                 </div>
 
-                <div className="space-y-4 mb-6">
-                  <div className="flex items-center gap-3 text-gray-700">
-                    <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
-                      <Users className="w-5 h-5 text-blue-600" />
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">Capacity</p>
-                      <p className="font-bold">{venue.capacity_sitting || 'Not specified'} Guests</p>
-                    </div>
+                {/* Input 1: Guest count */}
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center text-xs font-bold text-gray-700">
+                    <span>Number of Guests</span>
+                    <span className="text-[#D6336C] bg-[#D6336C]/10 px-2 py-0.5 rounded-md font-black">{guestsCount} Guests</span>
                   </div>
-                  <div className="flex items-center gap-3 text-gray-700">
-                    <div className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center shrink-0">
-                      <DollarSign className="w-5 h-5 text-green-600" />
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">Menu Packages</p>
-                      <p className="font-bold text-sm">Chicken: {venue.one_dish_chicken || '-'} | Beef: {venue.one_dish_beef || '-'}</p>
-                    </div>
+                  <input 
+                    type="range" 
+                    min="50" 
+                    max="1000" 
+                    step="10"
+                    value={guestsCount}
+                    onChange={(e) => setGuestsCount(parseInt(e.target.value) || 50)}
+                    className="w-full h-2 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-[#D6336C]"
+                  />
+                  <div className="flex justify-between text-[10px] text-gray-400 font-bold">
+                    <span>Min: 50</span>
+                    <span>Max: 1000</span>
                   </div>
                 </div>
 
-                <button className="w-full bg-gradient-to-r from-[#D6336C] to-[#B02A58] text-white py-4 rounded-xl font-bold shadow-md shadow-[#D6336C]/20 hover:shadow-lg transition-all hover:-translate-y-0.5">
-                  Request Booking
+                {/* Input 2: Catering Tier Packages */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Select Catering Package</label>
+                  <select 
+                    value={selectedPkgId}
+                    onChange={(e) => setSelectedPkgId(e.target.value)}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-xs font-bold text-gray-800 focus:ring-1 focus:ring-[#D6336C] cursor-pointer"
+                  >
+                    <option value="">No Food / Venue Hire Only</option>
+                    {activePackages.map(pkg => (
+                      <option key={pkg.id} value={pkg.id}>
+                        {pkg.name} ({pkg.type}) — ${pkg.perPlatePrice}/head
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* Dishes Preview */}
+                  {selectedPkg && (
+                    <div className="p-3 bg-pink-50/50 border border-pink-100 rounded-2xl space-y-1">
+                      <span className="text-[9px] font-black text-[#D6336C] uppercase tracking-wider block">Included Menu Dishes:</span>
+                      <div className="flex flex-wrap gap-1">
+                        {selectedPkg.dishes.map((dish, i) => (
+                          <span key={i} className="text-[9px] bg-white text-slate-700 px-2 py-0.5 rounded-full border border-slate-100 font-medium">
+                            {dish}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Input 3: Utility Charges */}
+                <div className="space-y-3 pt-3 border-t border-gray-100">
+                  <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Utility Configuration</label>
+                  
+                  <div className="flex items-center justify-between text-xs font-bold text-gray-700">
+                    <label className="flex items-center gap-2.5 cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={includeAC}
+                        onChange={(e) => setIncludeAC(e.target.checked)}
+                        className="w-4.5 h-4.5 rounded border-gray-300 text-[#D6336C] focus:ring-[#D6336C]"
+                      />
+                      <span>Air Conditioning (AC)</span>
+                    </label>
+                    <span className="text-slate-500 font-extrabold">+${activePricing.acCost}</span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs font-bold text-gray-700">
+                    <label className="flex items-center gap-2.5 cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={includeGenerator}
+                        onChange={(e) => setIncludeGenerator(e.target.checked)}
+                        className="w-4.5 h-4.5 rounded border-gray-300 text-[#D6336C] focus:ring-[#D6336C]"
+                      />
+                      <span>Generator / Backup setup</span>
+                    </label>
+                    <span className="text-slate-500 font-extrabold">+${activePricing.generatorCost}</span>
+                  </div>
+                </div>
+
+                {/* Input 4: Optional Add-ons */}
+                <div className="space-y-3 pt-3 border-t border-gray-100">
+                  <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Optional Add-ons & Services</label>
+
+                  {activePricing.decorAvailable && (
+                    <div className="flex items-center justify-between text-xs font-bold text-gray-700">
+                      <label className="flex items-center gap-2.5 cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={includeDecor}
+                          onChange={(e) => setIncludeDecor(e.target.checked)}
+                          className="w-4.5 h-4.5 rounded border-gray-300 text-[#D6336C] focus:ring-[#D6336C]"
+                        />
+                        <span>Premium Décor Packages</span>
+                      </label>
+                      <span className="text-slate-500 font-extrabold">+${activePricing.decorPrice}</span>
+                    </div>
+                  )}
+
+                  {activePricing.soundAvailable && (
+                    <div className="flex items-center justify-between text-xs font-bold text-gray-700">
+                      <label className="flex items-center gap-2.5 cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={includeSound}
+                          onChange={(e) => setIncludeSound(e.target.checked)}
+                          className="w-4.5 h-4.5 rounded border-gray-300 text-[#D6336C] focus:ring-[#D6336C]"
+                        />
+                        <span>Sound & DJ Systems</span>
+                      </label>
+                      <span className="text-slate-500 font-extrabold">+${activePricing.soundPrice}</span>
+                    </div>
+                  )}
+
+                  {activePricing.securityAvailable && (
+                    <div className="flex items-center justify-between text-xs font-bold text-gray-700">
+                      <label className="flex items-center gap-2.5 cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={includeSecurity}
+                          onChange={(e) => setIncludeSecurity(e.target.checked)}
+                          className="w-4.5 h-4.5 rounded border-gray-300 text-[#D6336C] focus:ring-[#D6336C]"
+                        />
+                        <span>Valet & Event Security</span>
+                      </label>
+                      <span className="text-slate-500 font-extrabold">+${activePricing.securityPrice}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Calculations Summary Breakdown */}
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-2.5">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Cost Breakdown</span>
+                  
+                  <div className="flex justify-between items-center text-xs text-slate-600 font-medium">
+                    <span>Base Hall Rent:</span>
+                    <span className="font-bold text-slate-800">${baseRent}</span>
+                  </div>
+
+                  {cateringCost > 0 && (
+                    <div className="flex justify-between items-center text-xs text-slate-600 font-medium">
+                      <span>Catering Subtotal ({guestsCount} × ${selectedPkg?.perPlatePrice}):</span>
+                      <span className="font-bold text-slate-800">${cateringCost}</span>
+                    </div>
+                  )}
+
+                  {utilitiesCost > 0 && (
+                    <div className="flex justify-between items-center text-xs text-slate-600 font-medium">
+                      <span>Utility Setup Fees:</span>
+                      <span className="font-bold text-slate-800">${utilitiesCost}</span>
+                    </div>
+                  )}
+
+                  {addonsCost > 0 && (
+                    <div className="flex justify-between items-center text-xs text-slate-600 font-medium">
+                      <span>Optional Services:</span>
+                      <span className="font-bold text-slate-800">${addonsCost}</span>
+                    </div>
+                  )}
+
+                  <div className="border-t border-slate-200/60 pt-2.5 flex justify-between items-center">
+                    <span className="text-sm font-black text-slate-800">Total Estimation:</span>
+                    <span className="text-xl font-black text-[#D6336C]">${totalEstimation}</span>
+                  </div>
+                </div>
+
+                <button 
+                  onClick={() => alert(`Perfect! Dynamic estimation request submitted successfully with total estimated value of $${totalEstimation} for ${guestsCount} guests.`)}
+                  className="w-full bg-gradient-to-r from-[#D6336C] to-[#B02A58] text-white py-4 rounded-xl font-bold shadow-md shadow-[#D6336C]/20 hover:shadow-lg transition-all hover:-translate-y-0.5 cursor-pointer text-center text-sm"
+                >
+                  Book Dynamic Quote Request
                 </button>
               </div>
 
