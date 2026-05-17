@@ -85,7 +85,7 @@ const CreateEvent = () => {
             case 1:
                 return <BasicDetails eventData={eventData} updateFormData={updateFormData} />;
             case 2:
-                return <VenueSelection eventData={eventData} updateFormData={updateFormData} />;
+                return <VenueSelection eventData={eventData} updateFormData={updateFormData} handleBack={handleBack} />;
             case 3:
                 return <Vendors eventData={eventData} updateFormData={updateFormData} />;
             case 4:

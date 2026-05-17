@@ -1,16 +1,31 @@
 import React, { useState } from 'react';
-import { Search, Star, Check, Users, Store, MapPin } from 'lucide-react';
+import { Search, Star, Check, Users, Store, MapPin, X, Filter } from 'lucide-react';
 import hallsData from '../../../data/halls.json';
+import { lahoreAreas } from '../../../data/lahoreAreas';
 
-const VenueSelection = ({ eventData, updateFormData }) => {
+const VenueSelection = ({ eventData, updateFormData, handleBack }) => {
     const [searchQuery, setSearchQuery] = useState('');
     const [visibleCount, setVisibleCount] = useState(12);
 
-    const filteredVenues = hallsData.filter(hall =>
-        (hall.hall_name && hall.hall_name.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        (hall.area && hall.area.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        (hall.full_address && hall.full_address.toLowerCase().includes(searchQuery.toLowerCase()))
-    );
+    const filteredVenues = hallsData.filter(hall => {
+        const matchesSearch = !searchQuery || 
+            (hall.hall_name && hall.hall_name.toLowerCase().includes(searchQuery.toLowerCase())) ||
+            (hall.area && hall.area.toLowerCase().includes(searchQuery.toLowerCase())) ||
+            (hall.full_address && hall.full_address.toLowerCase().includes(searchQuery.toLowerCase()));
+
+        const matchesLocation = !eventData.location || 
+            (hall.area && hall.area.toLowerCase() === eventData.location.toLowerCase());
+
+        const matchesGuests = !eventData.guestCount || 
+            (parseInt(hall.capacity_sitting) || 0) >= parseInt(eventData.guestCount);
+
+        return matchesSearch && matchesLocation && matchesGuests;
+    });
+
+    const clearFilters = () => {
+        updateFormData('location', '');
+        updateFormData('guestCount', '');
+    };
 
     const handleSelectVenue = (hall) => {
         updateFormData('selectedVenueId', hall.hall_id);
@@ -26,16 +41,74 @@ const VenueSelection = ({ eventData, updateFormData }) => {
                 <p className="text-gray-500">Choose the perfect location from our extensive catalog.</p>
             </div>
 
-            {/* Search */}
-            <div className="max-w-md mx-auto w-full mb-6 relative shrink-0">
-                <Search className="absolute top-3.5 left-4 text-gray-400 w-5 h-5 pointer-events-none" />
-                <input
-                    type="text"
-                    placeholder="Search by name or location..."
-                    value={searchQuery}
-                    onChange={(e) => { setSearchQuery(e.target.value); setVisibleCount(12); }}
-                    className="w-full pl-12 pr-4 py-3 rounded-full border border-gray-200 focus:border-[#D6336C] focus:ring-2 focus:ring-pink-100 outline-none shadow-sm"
-                />
+            {/* Active Filters Bar */}
+            {(eventData.location || eventData.guestCount) && (
+                <div className="flex flex-wrap items-center gap-3 mb-6 px-4 py-3 bg-white border-b border-[#D6336C]/10 shrink-0">
+                    <span className="text-sm font-medium text-gray-500">Active Filters:</span>
+                    {eventData.location && (
+                        <div className="flex items-center gap-1.5 bg-[#D6336C] text-white px-3.5 py-1.5 rounded-full text-xs font-bold shadow-sm">
+                            <MapPin size={12} /> {eventData.location}
+                            <button onClick={() => updateFormData('location', '')} className="hover:text-pink-200 ml-1">
+                                <X size={14} />
+                            </button>
+                        </div>
+                    )}
+                    {eventData.guestCount && (
+                        <div className="flex items-center gap-1.5 bg-[#D6336C] text-white px-3.5 py-1.5 rounded-full text-xs font-bold shadow-sm">
+                            <Users size={12} /> {eventData.guestCount}+ Guests
+                            <button onClick={() => updateFormData('guestCount', '')} className="hover:text-pink-200 ml-1">
+                                <X size={14} />
+                            </button>
+                        </div>
+                    )}
+                    <button 
+                        onClick={clearFilters}
+                        className="text-xs font-bold text-[#D6336C] hover:underline ml-auto"
+                    >
+                        Clear All
+                    </button>
+                </div>
+            )}
+
+            {/* Search & Manual Filters */}
+            <div className="max-w-4xl mx-auto w-full mb-8 px-4 shrink-0">
+                <div className="flex flex-col md:flex-row gap-4">
+                    <div className="relative flex-[2]">
+                        <Search className="absolute top-3.5 left-4 text-gray-400 w-5 h-5 pointer-events-none" />
+                        <input
+                            type="text"
+                            placeholder="Search hall name..."
+                            value={searchQuery}
+                            onChange={(e) => { setSearchQuery(e.target.value); setVisibleCount(12); }}
+                            className="w-full pl-12 pr-4 py-3 rounded-xl border border-gray-200 focus:border-[#D6336C] focus:ring-2 focus:ring-pink-100 outline-none shadow-sm transition-all"
+                        />
+                    </div>
+                    
+                    <div className="flex-1 relative">
+                        <MapPin className="absolute top-3.5 left-3.5 text-gray-400 w-4 h-4 pointer-events-none" />
+                        <select
+                            className="w-full pl-9 pr-4 py-3 rounded-xl border border-[#D6336C]/20 focus:border-[#D6336C] focus:ring-2 focus:ring-pink-100 outline-none bg-white text-sm font-medium transition-all"
+                            value={eventData.location}
+                            onChange={(e) => updateFormData('location', e.target.value)}
+                        >
+                            <option value="">All Areas</option>
+                            {lahoreAreas.map(area => (
+                                <option key={area} value={area}>{area}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div className="flex-1 relative">
+                        <Users className="absolute top-3.5 left-3.5 text-gray-400 w-4 h-4 pointer-events-none" />
+                        <input
+                            type="number"
+                            placeholder="Min. Guests"
+                            className="w-full pl-9 pr-4 py-3 rounded-xl border border-[#D6336C]/20 focus:border-[#D6336C] focus:ring-2 focus:ring-pink-100 outline-none transition-all text-sm font-medium"
+                            value={eventData.guestCount}
+                            onChange={(e) => updateFormData('guestCount', e.target.value)}
+                        />
+                    </div>
+                </div>
             </div>
 
             {/* Venue Grid */}
@@ -45,12 +118,13 @@ const VenueSelection = ({ eventData, updateFormData }) => {
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {filteredVenues.slice(0, visibleCount).map((hall, index) => {
                                 // Dynamic Pathing & Normalization
-                                const normalizedName = hall.hall_name ? hall.hall_name.toLowerCase().trim() : '';
-                                let imagePath = `/Marriage Hall/${normalizedName}/1.jpeg`;
+                                let imagePath = '/images/placeholder-hall.jpg';
                                 if (hall.images && hall.images.length > 0 && !hall.images[0].includes('placeholder')) {
-                                    imagePath = hall.images[0].replace('/Marriage_hall/', '/Marriage Hall/');
-                                } else if (hall.images && hall.images[0].includes('placeholder')) {
-                                    imagePath = '/images/placeholder-hall.jpg';
+                                    // Fix: folder name in public/ is 'Marriage_hall' with underscore
+                                    imagePath = hall.images[0].replace('/Marriage Hall/', '/Marriage_hall/');
+                                } else {
+                                    const hallName = hall.hall_name || '';
+                                    imagePath = `/Marriage_hall/${hallName}/1.jpg`;
                                 }
 
                                 const rating = hall.rating || (Math.random() * (5.0 - 4.0) + 4.0).toFixed(1);
@@ -117,8 +191,20 @@ const VenueSelection = ({ eventData, updateFormData }) => {
                         )}
                     </>
                 ) : (
-                    <div className="text-center py-20 text-gray-500">
-                        No venues found matching your search.
+                    <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-300 mx-4">
+                        <div className="w-20 h-20 bg-pink-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <MapPin size={40} className="text-[#D6336C]" />
+                        </div>
+                        <h3 className="text-xl font-bold text-gray-900 mb-2">No Halls Found</h3>
+                        <p className="text-gray-500 max-w-xs mx-auto mb-6">
+                            No marriage halls available in {eventData.location || 'this area'} for {eventData.guestCount || 'the'} requested guest count.
+                        </p>
+                        <button 
+                            onClick={handleBack}
+                            className="px-8 py-3 bg-[#D6336C] text-white rounded-full font-bold shadow-lg shadow-pink-200 hover:brightness-110 transition-all active:scale-95"
+                        >
+                            Change Filters
+                        </button>
                     </div>
                 )}
             </div>

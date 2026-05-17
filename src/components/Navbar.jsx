@@ -1,62 +1,164 @@
-import { useState } from 'react'
-import festalyticsLogo from '../assets/festalytics-logo.png'
+'use client'
+
+import { useState, useEffect } from 'react'
+import { usePathname, useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { Menu, X } from 'lucide-react'
 
 function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [scrolled, setScrolled] = useState(false)
+  const pathname = usePathname()
+  const router = useRouter()
 
-  const toggleMenu = () => {
-    setIsMenuOpen(!isMenuOpen)
-  }
+  useEffect(() => {
+    const handleScroll = () => {
+      if (window.scrollY > 20) {
+        setScrolled(true)
+      } else {
+        setScrolled(false)
+      }
+    }
+    
+    window.addEventListener('scroll', handleScroll)
+    // Initial check
+    handleScroll()
+    
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
 
-  const closeMenu = () => {
-    setIsMenuOpen(false)
-  }
+  const toggleMenu = () => setIsMenuOpen(!isMenuOpen)
+  const closeMenu = () => setIsMenuOpen(false)
+
+  const navLinks = [
+    { name: 'Home', href: '/' },
+    { name: 'About', href: '/about' },
+    { name: 'Services', href: '/services' },
+    { name: 'Contact', href: '/contact' },
+  ]
 
   return (
-    <nav className="bg-white shadow-[0_2px_4px_rgba(0,0,0,0.1)] sticky top-0 z-[1000] p-0" role="navigation" aria-label="Main navigation">
-      {/* UPDATE: py-4 ko py-2 kar diya hai height kam karne ke liye */}
-      <div className="max-w-[1200px] mx-auto flex justify-between items-center px-8 py-1 relative md:px-6">
-        <div className="flex items-center">
-          <a href="/" className="flex items-center no-underline transition-opacity duration-300 hover:opacity-80" aria-label="Home">
-            <img
-              src={festalyticsLogo.src}
-              alt="Festalytics"
-              className="h-10 w-auto object-contain"
-            />
-          </a>
+    <nav 
+      className="sticky top-0 z-50 w-full transition-all duration-300 transform animate-[slideDown_0.5s_ease]"
+      style={{ 
+        height: '68px',
+        background: 'rgba(255, 255, 255, 0.92)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        borderBottom: '1px solid rgba(214, 51, 108, 0.1)',
+        boxShadow: scrolled ? '0 4px 30px rgba(214, 51, 108, 0.15)' : '0 2px 20px rgba(214, 51, 108, 0.08)'
+      }}
+    >
+      <style>{`
+        @keyframes slideDown {
+          from { transform: translateY(-100%); }
+          to { transform: translateY(0); }
+        }
+        .nav-link {
+          position: relative;
+        }
+        .nav-link::after {
+          content: '';
+          position: absolute;
+          width: 0;
+          height: 2px;
+          bottom: -2px;
+          left: 0;
+          background-color: #D6336C;
+          transition: width 0.3s ease;
+        }
+        .nav-link:hover::after, .nav-link.active::after {
+          width: 100%;
+        }
+      `}</style>
+      
+      <div className="max-w-[1200px] mx-auto h-full flex justify-between items-center px-6 md:px-8">
+        
+        {/* LOGO */}
+        <Link 
+          href="/" 
+          className="flex items-center gap-2 no-underline transition-transform duration-300 hover:scale-[1.02] group" 
+          onClick={closeMenu}
+        >
+          <span className="font-bold text-[20px] bg-gradient-to-br from-[#D6336C] to-[#ff6eb4] text-transparent bg-clip-text">
+            Festalytics
+          </span>
+        </Link>
+
+        {/* DESKTOP LINKS */}
+        <div className="hidden md:flex items-center gap-2">
+          <ul className="flex list-none m-0 p-0 gap-2 items-center">
+            {navLinks.map((link) => {
+              // Active state considers precise match, or if home page then matches exact '/'
+              const isActive = pathname === link.href || (pathname === null && link.href === '/');
+              return (
+                <li key={link.name} className="m-0">
+                  <Link
+                    href={link.href}
+                    className={`nav-link block px-4 py-2 text-[15px] transition-colors duration-300 ${
+                      isActive ? 'text-[#D6336C] font-semibold active' : 'text-[#374151] font-medium hover:text-[#D6336C]'
+                    }`}
+                  >
+                    {link.name}
+                  </Link>
+                </li>
+              )
+            })}
+          </ul>
+          
+          {/* CTA BUTTON */}
+          <button 
+            onClick={() => router.push('/signup')}
+            className="ml-4 bg-gradient-to-r from-[#D6336C] to-[#ff6eb4] text-white px-5 py-2 rounded-full font-semibold text-[14px] shadow-[0_4px_15px_rgba(214,51,108,0.3)] transition-all duration-300 hover:scale-105 hover:shadow-[0_6px_20px_rgba(214,51,108,0.4)]"
+          >
+            Get Started
+          </button>
         </div>
 
+        {/* MOBILE MENU TOGGLE */}
         <button
-          className={`flex md:hidden flex-col justify-around w-[30px] h-[30px] bg-transparent border-none cursor-pointer p-0 z-[1001] transition-transform duration-300 focus:outline focus:outline-2 focus:outline-[#D6336C] focus:outline-offset-2 ${isMenuOpen ? '' : ''}`}
+          className="md:hidden flex items-center justify-center bg-transparent border-none p-2 cursor-pointer text-[#D6336C]"
           onClick={toggleMenu}
           aria-label={isMenuOpen ? 'Close menu' : 'Open menu'}
-          aria-expanded={isMenuOpen}
-          aria-controls="navbar-menu"
         >
-          <span className={`w-full h-[3px] bg-gray-700 rounded-[3px] transition-all duration-300 origin-center ${isMenuOpen ? 'rotate-45 translate-x-[8px] translate-y-[8px]' : ''}`}></span>
-          <span className={`w-full h-[3px] bg-gray-700 rounded-[3px] transition-all duration-300 origin-center ${isMenuOpen ? 'opacity-0 -translate-x-5' : ''}`}></span>
-          <span className={`w-full h-[3px] bg-gray-700 rounded-[3px] transition-all duration-300 origin-center ${isMenuOpen ? '-rotate-45 translate-x-[7px] -translate-y-[7px]' : ''}`}></span>
+          {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
+      </div>
 
-        <ul
-          className={`flex list-none m-0 p-0 gap-8 items-center transition-all duration-300 md:flex-row md:static md:w-auto md:h-auto md:bg-transparent md:shadow-none md:visible md:opacity-100 md:translate-x-0
-            ${isMenuOpen
-              ? 'translate-x-0 opacity-100 visible fixed top-[56px] left-0 right-0 flex-col bg-white shadow-md py-6 gap-0 max-h-[calc(100vh-56px)] overflow-y-auto w-full'
-              : 'fixed top-[56px] left-0 right-0 flex-col bg-white shadow-md py-6 gap-0 -translate-x-full opacity-0 invisible max-h-[calc(100vh-56px)] overflow-y-auto w-full md:flex'
-            }`}
-          id="navbar-menu"
-        >
-          {['Home', 'About', 'Services', 'Contact'].map((item) => (
-            <li key={item} className="m-0 w-full md:w-auto border-b border-gray-200 md:border-none last:border-none">
-              <a
-                href={item === 'Home' ? '/' : `/${item.toLowerCase()}`}
-                className="text-gray-700 no-underline font-medium transition-colors duration-300 px-6 py-4 md:px-4 md:py-2 block rounded text-lg md:text-base leading-relaxed hover:text-[#D6336C] hover:bg-gray-100 md:hover:bg-transparent md:hover:text-[#D6336C] focus:outline focus:outline-2 focus:outline-[#D6336C] focus:outline-offset-2 w-full text-left md:w-auto"
-                onClick={closeMenu}
-              >
-                {item}
-              </a>
-            </li>
-          ))}
+      {/* MOBILE MENU */}
+      <div 
+        className={`md:hidden absolute top-[68px] left-0 w-full bg-white overflow-hidden transition-all duration-300 ease-in-out shadow-lg ${
+          isMenuOpen ? 'max-h-[300px] opacity-100 border-b border-gray-100' : 'max-h-0 opacity-0'
+        }`}
+      >
+        <ul className="flex flex-col list-none m-0 p-4 gap-0">
+          {navLinks.map((link) => {
+            const isActive = pathname === link.href || (pathname === null && link.href === '/');
+            return (
+              <li key={link.name} className="m-0 border-b border-[#f0f0f0] last:border-none">
+                <Link
+                  href={link.href}
+                  className={`block px-4 py-3 text-[15px] transition-colors duration-300 ${
+                    isActive ? 'text-[#D6336C] font-semibold' : 'text-[#374151] font-medium'
+                  }`}
+                  onClick={closeMenu}
+                >
+                  {link.name}
+                </Link>
+              </li>
+            )
+          })}
+          <li className="mt-4 px-4 pb-2">
+            <button 
+              onClick={() => {
+                closeMenu();
+                router.push('/signup');
+              }}
+              className="w-full bg-gradient-to-r from-[#D6336C] to-[#ff6eb4] text-white px-5 py-3 rounded-full font-semibold text-[14px] shadow-[0_4px_15px_rgba(214,51,108,0.3)] transition-transform hover:scale-105"
+            >
+              Get Started
+            </button>
+          </li>
         </ul>
       </div>
     </nav>

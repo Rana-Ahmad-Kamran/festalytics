@@ -1,6 +1,7 @@
 import React from 'react';
 import { Calendar, MapPin, Users, Clock } from 'lucide-react';
 import { EVENT_TYPES } from '../data';
+import { lahoreAreas } from '../../../data/lahoreAreas';
 
 const BasicDetails = ({ eventData, updateFormData }) => {
     return (
@@ -53,12 +54,15 @@ const BasicDetails = ({ eventData, updateFormData }) => {
                         <label className="block text-sm font-bold text-gray-700 mb-2">Time</label>
                         <div className="relative">
                             <Clock className="absolute top-3.5 left-3.5 text-gray-400 w-5 h-5 pointer-events-none" />
-                            <input
-                                type="time"
-                                className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:border-[#D6336C] focus:ring-2 focus:ring-pink-100 outline-none"
+                            <select
+                                className="w-full pl-10 pr-4 py-3 rounded-[10px] border border-[#D6336C]/20 focus:border-[#D6336C] focus:ring-2 focus:ring-pink-100 outline-none bg-white"
                                 value={eventData.time}
                                 onChange={(e) => updateFormData('time', e.target.value)}
-                            />
+                            >
+                                <option value="">Select Timing</option>
+                                <option value="morning">Morning</option>
+                                <option value="evening">Evening</option>
+                            </select>
                         </div>
                     </div>
                 </div>
@@ -70,11 +74,17 @@ const BasicDetails = ({ eventData, updateFormData }) => {
                             <MapPin className="absolute top-3.5 left-3.5 text-gray-400 w-5 h-5 pointer-events-none" />
                             <input
                                 type="text"
-                                placeholder="Lahore"
-                                className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:border-[#D6336C] focus:ring-2 focus:ring-pink-100 outline-none"
+                                list="lahore-areas"
+                                placeholder="Search or select area..."
+                                className="w-full pl-10 pr-4 py-3 rounded-[10px] border border-[#D6336C]/20 focus:border-[#D6336C] focus:ring-2 focus:ring-pink-100 outline-none transition-all shadow-sm"
                                 value={eventData.location}
                                 onChange={(e) => updateFormData('location', e.target.value)}
                             />
+                            <datalist id="lahore-areas">
+                                {lahoreAreas.map(area => (
+                                    <option key={area} value={area} />
+                                ))}
+                            </datalist>
                         </div>
                     </div>
                     <div>
