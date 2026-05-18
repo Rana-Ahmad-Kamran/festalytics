@@ -6,7 +6,7 @@ import DashboardHeader from './DashboardHeader';
 import Footer from './Footer';
 import hallsData from '../data/halls.json';
 import { db } from "../firebase";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 
 const VenueDetails = () => {
   const { id } = useParams();
@@ -35,7 +35,7 @@ const VenueDetails = () => {
 
   // Dynamic Cost Estimation Engine states
   const [guestsCount, setGuestsCount] = useState(150);
-  const [selectedPkgId, setSelectedPkgId] = useState("");
+  const [selectedPkgId, setSelectedPkgId] = useState("pkg-1");
   const [includeAC, setIncludeAC] = useState(true);
   const [includeGenerator, setIncludeGenerator] = useState(true);
   
@@ -43,26 +43,106 @@ const VenueDetails = () => {
   const [includeSound, setIncludeSound] = useState(false);
   const [includeSecurity, setIncludeSecurity] = useState(false);
 
+  const getFirestoreDocId = (venueObj) => {
+    if (!venueObj) return null;
+    const name = venueObj.hall_name ? venueObj.hall_name.toLowerCase() : "";
+    if (venueObj.hall_id === "1" || name.includes("zaydan banquet hall")) {
+      return "zaydan-banquet-hall";
+    }
+    if (venueObj.hall_id === "2" || name.includes("qasar e zaydan")) {
+      return "qasar-e-zaydan";
+    }
+    return venueObj.hall_id?.toString() || venueObj.hall_name?.toLowerCase().replace(/\s+/g, '-');
+  };
+
   useEffect(() => {
+    if (!venue) return;
+
     const fetchDbVenue = async () => {
       try {
-        const docRef = doc(db, "venues", "grand-azure-ballroom");
+        const docId = getFirestoreDocId(venue);
+        const docRef = doc(db, "venues", docId);
         const docSnap = await getDoc(docRef);
+        
         if (docSnap.exists()) {
           const data = docSnap.data();
           setDbVenue(data);
           if (data.cateringPackages && data.cateringPackages.length > 0) {
             setSelectedPkgId(data.cateringPackages[0].id);
           }
+        } else {
+          // Document does not exist in Firestore! Auto-seed it with best-practice default data from local asset definitions
+          const chickenPrice = Math.round((parseInt(venue.one_dish_chicken) || 1600) / 45) || 35;
+          const beefPrice = Math.round((parseInt(venue.one_dish_beef) || 2250) / 50) || 45;
+          const muttonPrice = Math.round((parseInt(venue.one_dish_mutton) || 3000) / 45) || 65;
+
+          const defaultData = {
+            pricing: {
+              hallRent: venue.price_range ? parseInt(venue.price_range.replace(/[^0-9]/g, '')) || 2500 : 2500,
+              acCost: 500,
+              generatorCost: 350,
+              decorAvailable: true,
+              decorPrice: 1200,
+              soundAvailable: true,
+              soundPrice: 850,
+              securityAvailable: true,
+              securityPrice: 400
+            },
+            cateringPackages: [
+              {
+                id: 'pkg-1',
+                name: "Barat Luxury Beef Menu",
+                type: "Beef",
+                perPlatePrice: beefPrice,
+                dishes: ["Beef Biryani", "Beef Qorma", "Raita & Salad", "Assorted Naan", "Shahi Kheer"]
+              },
+              {
+                id: 'pkg-2',
+                name: "Mehndi Feast Chicken Menu",
+                type: "Chicken",
+                perPlatePrice: chickenPrice,
+                dishes: ["Chicken Pulao", "Chicken Seekh Kabab", "Fresh Salad", "Mint Raita", "Jalebi"]
+              },
+              {
+                id: 'pkg-3',
+                name: "Royal Mutton Walima Menu",
+                type: "Mutton",
+                perPlatePrice: muttonPrice,
+                dishes: ["Mutton Mandi", "Mutton Karahi", "Hummus & Pita", "Special Salad", "Shahi Tukray"]
+              }
+            ],
+            images: venue.images ? venue.images.map((img, idx) => ({
+              id: `img-${idx + 1}`,
+              url: decodeURIComponent(img.replace('/Marriage Hall/', '/Marriage_hall/')),
+              label: `${venue.hall_name} View ${idx + 1}`,
+              isPrimary: idx === 0
+            })) : [],
+            features: [
+              "Premium Sound System", "Custom Mood Lighting", "Valet Parking Access", "Integrated Stage", "Full Bar Setup"
+            ],
+            faqs: [
+              { id: "faq-1", question: `Is catering included in the base venue hire price of ${venue.hall_name}?`, answer: "Catering is not included in the base venue rate. You can choose to add our custom catering package under the Menu tab.", active: true },
+              { id: "faq-2", question: `What is the maximum capacity of the ${venue.hall_name}?`, answer: "The venue can comfortably accommodate up to 500 guests for banquet seating and up to 700 guests for standing reception setups.", active: true }
+            ],
+            serviceActive: true,
+            updatedAt: new Date().toISOString()
+          };
+          
+          await setDoc(docRef, defaultData);
+          setDbVenue(defaultData);
+          if (defaultData.cateringPackages && defaultData.cateringPackages.length > 0) {
+            setSelectedPkgId(defaultData.cateringPackages[0].id);
+          }
         }
       } catch (err) {
-        console.error("Error reading Firestore in client: ", err);
+        console.error("Error reading/seeding Firestore in client: ", err);
       } finally {
         setLoadingDb(false);
       }
     };
+    
     fetchDbVenue();
-  }, []);
+  }, [venue]);
 
   if (!venue) {
     return (
@@ -124,11 +204,26 @@ const VenueDetails = () => {
                      (includeSecurity && activePricing.securityAvailable ? activePricing.securityPrice : 0);
   const totalEstimation = baseRent + cateringCost + utilitiesCost + addonsCost;
 
+  // Get folder path segment of current venue (e.g. "Zaydan Banquet Hall" or "Qasar E Zaydan")
+  const getVenueFolderSegment = () => {
+    if (!venue || !venue.images || venue.images.length === 0) return "";
+    const firstImg = venue.images[0];
+    const parts = firstImg.split('/');
+    const folder = parts[parts.length - 2] || "";
+    return decodeURIComponent(folder);
+  };
+
+  const folderSegment = getVenueFolderSegment();
+
   // Pre-process images to fix pathing (load from Firestore if custom reordering was saved)
-  const images = dbVenue?.images && dbVenue.images.length > 0 
-    ? dbVenue.images.map(img => img.url)
+  const filteredDbImages = dbVenue?.images && dbVenue.images.length > 0
+    ? dbVenue.images.filter(img => img.url && folderSegment && img.url.includes(folderSegment)).map(img => img.url)
+    : [];
+
+  const images = filteredDbImages.length > 0 
+    ? filteredDbImages
     : (venue.images && venue.images.length > 0 
-        ? venue.images.map(img => img.replace('/Marriage Hall/', '/Marriage_hall/'))
+        ? venue.images.map(img => decodeURIComponent(img.replace('/Marriage Hall/', '/Marriage_hall/')))
         : ['/images/placeholder-hall.jpg']);
 
   return (

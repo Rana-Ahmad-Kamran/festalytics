@@ -1,19 +1,58 @@
 "use client";
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import MetricCard from '@/components/vendor/MetricCard';
 import RecentBookings from '@/components/vendor/RecentBookings';
 import Calendar from '@/components/vendor/Calendar';
 import AnalyticsPreview from '@/components/vendor/AnalyticsPreview';
+import { db, auth } from "@/firebase";
+import { doc, getDoc } from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
 
 const VendorDashboard = () => {
+    const [vendorName, setVendorName] = useState("Alex Rivera");
+
+    useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                if (user.displayName) {
+                    setVendorName(user.displayName);
+                } else {
+                    try {
+                        const userDocRef = doc(db, "users", user.uid);
+                        const userDocSnap = await getDoc(userDocRef);
+                        if (userDocSnap.exists()) {
+                            const userData = userDocSnap.data();
+                            if (userData.name) {
+                                setVendorName(userData.name);
+                            }
+                        }
+                    } catch (err) {
+                        console.error("Error fetching vendor name: ", err);
+                    }
+                }
+            } else {
+                setVendorName("Alex Rivera");
+            }
+        });
+        return () => unsubscribe();
+    }, []);
+
     const metrics = [
         { icon: 'calendar_month', label: 'Total Bookings', value: '24', trend: '+12%', iconBg: 'bg-primary-fixed' },
         { icon: 'payments', label: 'Revenue', value: '$4,250', trend: '+8%', iconBg: 'bg-tertiary-fixed' },
         { icon: 'notification_important', label: 'Pending Requests', value: '3', trendLabel: 'View All', iconBg: 'bg-error-container' },
         { icon: 'star', label: 'Average Rating', value: '4.8', trendLabel: '124 reviews', iconBg: 'bg-secondary-fixed' },
     ];
+
+    // Format current date dynamically
+    const formattedDate = new Date().toLocaleDateString('en-US', {
+        weekday: 'long',
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+    }).toUpperCase();
 
     return (
         <>
@@ -23,8 +62,8 @@ const VendorDashboard = () => {
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                 >
-                    <p className="text-xs font-black text-primary mb-1 uppercase tracking-widest">MONDAY, MAY 15 2024</p>
-                    <h2 className="text-4xl font-black text-on-surface tracking-tight">Welcome back, Alex Rivera!</h2>
+                    <p className="text-xs font-black text-primary mb-1 uppercase tracking-widest">{formattedDate}</p>
+                    <h2 className="text-4xl font-black text-on-surface tracking-tight">Welcome back, {vendorName}!</h2>
                     <p className="text-lg text-on-surface-variant">Here's what's happening with your event services today.</p>
                 </motion.div>
                 <div className="flex gap-4">

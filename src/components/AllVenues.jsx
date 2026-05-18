@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Search, MapPin } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -8,20 +8,114 @@ import DashboardHeader from './DashboardHeader';
 import Footer from './Footer';
 import HallCard from './HallCard';
 import hallsData from '../data/halls.json';
+import { db } from "../firebase";
+import { collection, getDocs } from "firebase/firestore";
 
 const AllVenues = () => {
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedLocation, setSelectedLocation] = useState('All');
+  const [dbVenuesMap, setDbVenuesMap] = useState({});
+  const [loading, setLoading] = useState(true);
+
+  const getFirestoreDocId = (venueObj) => {
+    if (!venueObj) return null;
+    const name = venueObj.hall_name ? venueObj.hall_name.toLowerCase() : "";
+    if (venueObj.hall_id === "1" || name.includes("zaydan banquet hall")) {
+      return "zaydan-banquet-hall";
+    }
+    if (venueObj.hall_id === "2" || name.includes("qasar e zaydan")) {
+      return "qasar-e-zaydan";
+    }
+    return venueObj.hall_id?.toString() || venueObj.hall_name?.toLowerCase().replace(/\s+/g, '-');
+  };
+
+  useEffect(() => {
+    const fetchAllDbVenues = async () => {
+      try {
+        const querySnapshot = await getDocs(collection(db, "venues"));
+        const venuesMap = {};
+        querySnapshot.forEach((doc) => {
+          venuesMap[doc.id] = doc.data();
+        });
+        setDbVenuesMap(venuesMap);
+      } catch (err) {
+        console.error("Error fetching all venues from Firestore: ", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchAllDbVenues();
+  }, []);
+
+  const mergedHalls = useMemo(() => {
+    // 1. Map existing local halls with database updates
+    const updatedLocalHalls = hallsData.map(hall => {
+      const docId = getFirestoreDocId(hall);
+      const dbData = dbVenuesMap[docId];
+      if (!dbData) return hall;
+
+      // Merge pricing, profiles, images, and active state
+      const images = dbData.images ? dbData.images.map(img => img.url) : hall.images;
+
+      return {
+        ...hall,
+        hall_name: dbData.profile?.hall_name || dbData.hallName || hall.hall_name,
+        full_address: dbData.profile?.address || dbData.address || hall.full_address,
+        area: dbData.profile?.area || dbData.area || hall.area,
+        capacity_sitting: dbData.profile?.capacity?.toString() || dbData.capacity?.toString() || hall.capacity_sitting,
+        phone_1: dbData.profile?.phone_1 || dbData.phone_1 || hall.phone_1,
+        // Sync active state from vendor ERP
+        serviceActive: dbData.serviceActive !== false,
+        price_range: dbData.pricing?.hallRent ? `PKR ${dbData.pricing.hallRent * 45} base rent` : hall.price_range,
+        images: images,
+        one_dish_chicken: dbData.cateringPackages?.find(p => p.type?.toLowerCase().includes("chicken"))?.perPlatePrice * 45 || hall.one_dish_chicken,
+        one_dish_beef: dbData.cateringPackages?.find(p => p.type?.toLowerCase().includes("beef"))?.perPlatePrice * 50 || hall.one_dish_beef,
+        one_dish_mutton: dbData.cateringPackages?.find(p => p.type?.toLowerCase().includes("mutton"))?.perPlatePrice * 45 || hall.one_dish_mutton,
+        isFromDb: true
+      };
+    }).filter(hall => hall.serviceActive !== false); // Filter out inactive services!
+
+    // 2. Add any newly registered vendor halls in Firestore that do not exist in local json
+    const localDocIds = new Set(hallsData.map(h => getFirestoreDocId(h)));
+    const newDbHalls = [];
+    
+    Object.keys(dbVenuesMap).forEach(docId => {
+      if (!localDocIds.has(docId)) {
+        const dbData = dbVenuesMap[docId];
+        if (dbData.serviceActive !== false) {
+          const primaryImg = dbData.images?.find(img => img.isPrimary)?.url || dbData.images?.[0]?.url || '/images/placeholder-hall.jpg';
+          newDbHalls.push({
+            hall_id: docId,
+            hall_name: dbData.profile?.hall_name || dbData.hallName || docId.replace(/-/g, ' '),
+            category: "Luxury",
+            description: dbData.profile?.description || "A registered premium wedding hall vendor.",
+            full_address: dbData.profile?.address || "Address",
+            area: dbData.profile?.area || "Lahore",
+            capacity_sitting: dbData.profile?.capacity?.toString() || "500",
+            phone_1: dbData.profile?.phone_1 || "",
+            price_range: dbData.pricing?.hallRent ? `PKR ${dbData.pricing.hallRent * 45} base rent` : "Contact for Pricing",
+            images: dbData.images ? dbData.images.map(img => img.url) : [primaryImg],
+            one_dish_chicken: dbData.cateringPackages?.find(p => p.type?.toLowerCase().includes("chicken"))?.perPlatePrice * 45 || "2000",
+            one_dish_beef: dbData.cateringPackages?.find(p => p.type?.toLowerCase().includes("beef"))?.perPlatePrice * 50 || "2850",
+            one_dish_mutton: dbData.cateringPackages?.find(p => p.type?.toLowerCase().includes("mutton"))?.perPlatePrice * 45 || "4100",
+            isFromDb: true
+          });
+        }
+      }
+    });
+
+    return [...updatedLocalHalls, ...newDbHalls];
+  }, [dbVenuesMap]);
 
   // Extract unique locations for the filter
   const locations = useMemo(() => {
-    const locs = hallsData.map(hall => hall.area || 'Lahore').filter(Boolean);
+    const locs = mergedHalls.map(hall => hall.area || 'Lahore').filter(Boolean);
     const uniqueLocs = [...new Set(locs)].sort();
     return ['All', ...uniqueLocs];
-  }, []);
+  }, [mergedHalls]);
 
-  const filteredHalls = hallsData.filter(hall => {
+  const filteredHalls = mergedHalls.filter(hall => {
     const matchesSearch =
       (hall.hall_name && hall.hall_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (hall.full_address && hall.full_address.toLowerCase().includes(searchTerm.toLowerCase()));

@@ -1,13 +1,15 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { db } from "@/firebase";
+import { db, auth } from "@/firebase";
 import { doc, getDoc, updateDoc, setDoc, arrayUnion, collection, getDocs, addDoc } from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
 import BookingStats from '@/components/vendor/bookings/BookingStats';
 import BookingFilters from '@/components/vendor/bookings/BookingFilters';
 
 const BookingsPage = () => {
     const [showWalkinForm, setShowWalkinForm] = useState(false);
+    const [venueId, setVenueId] = useState("zaydan-banquet-hall");
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [toast, setToast] = useState({ show: false, message: "", type: "success" });
@@ -92,12 +94,44 @@ const BookingsPage = () => {
         setTimeout(() => setToast({ show: false, message: "", type: "success" }), 3500);
     };
 
-    // Load active service data and previous bookings from database
+    // 1. Resolve logged-in vendor's associated venue document ID dynamically from auth session
+    useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                try {
+                    // Fetch user document from users collection to extract associated venueId
+                    const userDocRef = doc(db, "users", user.uid);
+                    const userDocSnap = await getDoc(userDocRef);
+                    if (userDocSnap.exists()) {
+                        const userData = userDocSnap.data();
+                        if (userData.venueId) {
+                            setVenueId(userData.venueId);
+                        } else if (userData.role === "vendor") {
+                            // Fallback to vendor's uid if no explicit venueId is set
+                            setVenueId(user.uid);
+                        }
+                    } else {
+                        // Profile missing but authenticated? Fallback to uid
+                        setVenueId(user.uid);
+                    }
+                } catch (err) {
+                    console.error("Error resolving vendor multi-tenant context: ", err);
+                }
+            } else {
+                // If not logged in, we preserve development mode pointing to zaydan-banquet-hall
+                setVenueId("zaydan-banquet-hall");
+            }
+        });
+
+        return () => unsubscribe();
+    }, []);
+
+    // Load active service data and previous bookings from database dynamically based on venueId
     const loadData = async () => {
         setIsLoading(true);
         try {
             // 1. Fetch Venue details to retrieve dynamic pricing and catering menu cards
-            const docRef = doc(db, "venues", "grand-azure-ballroom");
+            const docRef = doc(db, "venues", venueId);
             const docSnap = await getDoc(docRef);
             if (docSnap.exists()) {
                 const data = docSnap.data();
@@ -113,7 +147,7 @@ const BookingsPage = () => {
             const list = [];
             bookingsSnap.forEach((doc) => {
                 const b = doc.data();
-                if (b.eventDetails?.venueId === 'grand-azure-ballroom') {
+                if (b.eventDetails?.venueId === venueId) {
                     list.push({
                         id: b.id,
                         customer: { 
@@ -141,7 +175,7 @@ const BookingsPage = () => {
 
     useEffect(() => {
         loadData();
-    }, []);
+    }, [venueId]);
 
     useEffect(() => {
         if (venueData) {
@@ -256,7 +290,7 @@ const BookingsPage = () => {
                 date: eventDate,
                 timing: eventTiming,
                 guests: parseInt(guestsCount, 10),
-                venueId: 'grand-azure-ballroom',
+                venueId: venueId,
                 source: 'Walk-in ERP'
             },
             catering: {
@@ -268,6 +302,7 @@ const BookingsPage = () => {
             addons: {
                 ac: includeAC,
                 generator: includeGenerator,
+                addonsCost: addonsCost,
                 decor: includeDecor,
                 sound: includeSound,
                 security: includeSecurity
@@ -293,7 +328,7 @@ const BookingsPage = () => {
             await addDoc(bookingsRef, bookingPayload);
 
             // 2. Lock Date Availability inside the venue profile dynamically
-            const venueRef = doc(db, "venues", "grand-azure-ballroom");
+            const venueRef = doc(db, "venues", venueId);
             await updateDoc(venueRef, {
                 blockedDates: arrayUnion(eventDate)
             });
@@ -319,7 +354,7 @@ const BookingsPage = () => {
             loadData();
         } catch (err) {
             console.error("Error saving booking: ", err);
-            triggerToast("Error saving booking. Please try again.", "error");
+            triggerToast(`Save Failed: ${err.code === "permission-denied" ? "Missing or insufficient database permissions. Please log in." : err.message}`, "error");
         } finally {
             setIsSaving(false);
         }

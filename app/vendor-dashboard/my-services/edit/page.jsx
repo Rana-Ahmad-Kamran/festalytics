@@ -10,9 +10,9 @@ const EditServicePage = () => {
 
     // State for Images tab
     const [images, setImages] = useState([
-        { id: 1, url: "https://lh3.googleusercontent.com/aida-public/AB6AXuBuy0BVHC2XjRTH_fSoFFFDSRO22xmDudYl8wK5pitHccWAdmbEOIckxmIuxol0j21-WqmYYPLB9yB_HQPA58PLV0U1G-K6e_dV0zoVCxo5q_GS4sQW7YACzr_EHVk4mH8OJGUeZPA0GaXYnAyltwWVP6H3JskBpYtLfl9VWOeqGlDbCWi5YHqoNIUdpe2DvVXJrIyfr4ZBo429xthALp5xmyfDaICOTNubnEHNB9Z6e2K_ZN_-sPDhzSZpjVFenK2puDppwqG1y7k", label: "Main Banner Image", isPrimary: true },
-        { id: 2, url: "https://lh3.googleusercontent.com/aida-public/AB6AXuAYUMlYd8vgXmXeltCVhXJqBDEO7JKFTHvr46Dx2AnfEgje7RwkAibYGG0JyrjT5fnMTosjoz9t-PoDwOSGB4KrEuc8eKSnd6IAm3bPm2ESr0xHDHUB9cJGt-pFYhfmXPqN1pWthQsFXcC2DPlHgakce5A_s1qbyI3WJoSU8GxbwBX5zzOEH2CDbjH4HTgRuHy9rcWixL-MUHTTXbdL7BA-mmZ3g_i0jrc0ZjPZaNf3L3JXLQmc-ukc0m7jICMGsxBIM2Oln1RuiNw", label: "Foyer & Lounge Area", isPrimary: false },
-        { id: 3, url: "https://lh3.googleusercontent.com/aida-public/AB6AXuDLqkmpv-tKIE64uT85t9dw_PmrKxVQA9pCImmMNAKiJc0GF4ad7sgHvokk26Vn74G2V_ej-b2jmpornD4tFS2Jv5A2jlNgj3FcsFQvxEjau4DkuDFBhk8b5Meqp0dMAwplpTUxZik1fPBUcfgPSPWLRURsPm0h8ObdybU1XKrFtRJpXyFjw6aeRIjjAnEEUz651m8n1JNo4K4F_Kba62CXP_slwnsriDFVTav2KrlUNVfbunk0s_Z3qOa6x5_I9icgqb7bZkcBzNA", label: "Gala Table Setting", isPrimary: false }
+        { id: 1, url: "/Marriage_hall/Zaydan Banquet Hall/2.webp", label: "Zaydan Banquet Hall Main Entrance", isPrimary: true },
+        { id: 2, url: "/Marriage_hall/Zaydan Banquet Hall/1.webp", label: "Zaydan Banquet Royal Ballroom", isPrimary: false },
+        { id: 3, url: "/Marriage_hall/Zaydan Banquet Hall/3.jpg", label: "Royal floral setting & logistics", isPrimary: false }
     ]);
 
     // State for description features
@@ -87,7 +87,7 @@ const EditServicePage = () => {
                         <span className="material-symbols-outlined text-xs text-primary">chevron_right</span>
                         <span className="text-primary">Edit Service</span>
                     </nav>
-                    <h2 className="text-3xl font-black text-on-surface tracking-tight">Edit Service: <span className="text-secondary">Grand Azure Ballroom</span></h2>
+                    <h2 className="text-3xl font-black text-on-surface tracking-tight">Edit Service: <span className="text-secondary">Zaydan Banquet Hall</span></h2>
                 </div>
                 <div className="flex items-center gap-3">
                     <button 
@@ -232,7 +232,7 @@ const EditServicePage = () => {
                                         <div className="space-y-3">
                                             <div>
                                                 <label className="text-[10px] font-bold text-outline uppercase tracking-wider">Service Name</label>
-                                                <p className="font-bold text-secondary text-sm">Grand Azure Ballroom</p>
+                                                <p className="font-bold text-secondary text-sm">Zaydan Banquet Hall</p>
                                             </div>
                                             <div>
                                                 <label className="text-[10px] font-bold text-outline uppercase tracking-wider">Category</label>
@@ -582,7 +582,7 @@ const EditServicePage = () => {
                             >
                                 <div>
                                     <h3 className="text-2xl font-black text-on-surface tracking-tight">Availability Calendar</h3>
-                                    <p className="text-sm font-medium text-on-surface-variant mt-1">Block specific dates or manage blackout windows for Grand Azure Ballroom.</p>
+                                    <p className="text-sm font-medium text-on-surface-variant mt-1">Block specific dates or manage blackout windows for Zaydan Banquet Hall.</p>
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -715,7 +715,7 @@ const EditServicePage = () => {
                                 <div className="flex justify-between items-start flex-col md:flex-row gap-6">
                                     <div>
                                         <h3 className="text-2xl font-black text-on-surface tracking-tight">Customer Reviews</h3>
-                                        <p className="text-sm font-medium text-on-surface-variant mt-1">Read and reply to feedback from clients who booked Grand Azure Ballroom.</p>
+                                        <p className="text-sm font-medium text-on-surface-variant mt-1">Read and reply to feedback from clients who booked Zaydan Banquet Hall.</p>
                                     </div>
                                     <div className="flex items-center gap-4 bg-surface-container-low px-6 py-3 rounded-full border border-outline-variant/20">
                                         <span className="font-black text-3xl text-primary">4.9</span>
@@ -732,7 +732,7 @@ const EditServicePage = () => {
 
                                 <div className="space-y-6">
                                     {[
-                                        { id: 1, name: "Sarah Jenkins", role: "Wedding Bride", rating: 5, date: "Yesterday, 3:15 PM", comment: "The Grand Azure Ballroom was the absolute venue of my dreams! The lighting was magical, the team assisted with every setup request, and our guests were in complete awe of the massive chandeliers.", avatar: "https://lh3.googleusercontent.com/aida-public/AB6AXuDgeLzlA5XtTQ0l7oEDflZ9ehbgwu8VjwxLrQjx-DwpUVzYU2pZZeOId8YywmTI0NvAtf9WhK9jIZKAMkzkgG18NQO6nVwSAiZcNsGWY55P9jk_dVBQjkebW4kgCG4qGAGdboi11VYpcAm99fbugNHi8CLrYlaLXBxyjdJkRD8lBqSl-GTmZkfauEwzWFJ03TnYnlZuoieR-QgTwGX886iKkyzagbvPko2mjaW98hZOijtwwWugXcCTxA6JBXv_CeOYiY2Z0sLEhDc" },
+                                        { id: 1, name: "Sarah Jenkins", role: "Wedding Bride", rating: 5, date: "Yesterday, 3:15 PM", comment: "Zaydan Banquet Hall was the absolute venue of my dreams! The lighting was magical, the team assisted with every setup request, and our guests were in complete awe of the elegant layout.", avatar: "https://lh3.googleusercontent.com/aida-public/AB6AXuDgeLzlA5XtTQ0l7oEDflZ9ehbgwu8VjwxLrQjx-DwpUVzYU2pZZeOId8YywmTI0NvAtf9WhK9jIZKAMkzkgG18NQO6nVwSAiZcNsGWY55P9jk_dVBQjkebW4kgCG4qGAGdboi11VYpcAm99fbugNHi8CLrYlaLXBxyjdJkRD8lBqSl-GTmZkfauEwzWFJ03TnYnlZuoieR-QgTwGX886iKkyzagbvPko2mjaW98hZOijtwwWugXcCTxA6JBXv_CeOYiY2Z0sLEhDc" },
                                         { id: 2, name: "Michael Vance", role: "Corporate Organizer", rating: 4.8, date: "4 days ago", comment: "Exceptional service and extremely grand visual vibes. Setup was extremely easy due to the loading dock access, and the stage was perfect for our presenters.", avatar: "https://lh3.googleusercontent.com/aida-public/AB6AXuAYUMlYd8vgXmXeltCVhXJqBDEO7JKFTHvr46Dx2AnfEgje7RwkAibYGG0JyrjT5fnMTosjoz9t-PoDwOSGB4KrEuc8eKSnd6IAm3bPm2ESr0xHDHUB9cJGt-pFYhfmXPqN1pWthQsFXcC2DPlHgakce5A_s1qbyI3WJoSU8GxbwBX5zzOEH2CDbjH4HTgRuHy9rcWixL-MUHTTXbdL7BA-mmZ3g_i0jrc0ZjPZaNf3L3JXLQmc-ukc0m7jICMGsxBIM2Oln1RuiNw" }
                                     ].map((rev) => (
                                         <div key={rev.id} className="p-6 rounded-3xl bg-surface-container-low border border-outline-variant/20 space-y-4">
@@ -776,7 +776,7 @@ const EditServicePage = () => {
                             >
                                 <div>
                                     <h3 className="text-2xl font-black text-on-surface tracking-tight">Service FAQs</h3>
-                                    <p className="text-sm font-medium text-on-surface-variant mt-1">Manage frequently asked questions specific to the Grand Azure Ballroom.</p>
+                                    <p className="text-sm font-medium text-on-surface-variant mt-1">Manage frequently asked questions specific to the Zaydan Banquet Hall.</p>
                                 </div>
 
                                 <div className="space-y-4">

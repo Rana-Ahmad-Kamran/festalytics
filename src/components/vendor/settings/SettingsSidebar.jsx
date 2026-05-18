@@ -1,11 +1,46 @@
 "use client";
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion } from 'framer-motion';
+import { db, auth } from "@/firebase";
+import { doc, getDoc } from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
 
 const SettingsSidebar = () => {
     const pathname = usePathname();
+    const [businessName, setBusinessName] = useState("Zaydan Banquet Hall");
+
+    useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                try {
+                    const userDocRef = doc(db, "users", user.uid);
+                    const userDocSnap = await getDoc(userDocRef);
+                    if (userDocSnap.exists()) {
+                        const userData = userDocSnap.data();
+                        const vId = userData.venueId || "zaydan-banquet-hall";
+                        
+                        const venueDocRef = doc(db, "venues", vId);
+                        const venueDocSnap = await getDoc(venueDocRef);
+                        if (venueDocSnap.exists()) {
+                            const venueData = venueDocSnap.data();
+                            if (venueData.name) {
+                                setBusinessName(venueData.name);
+                            }
+                        } else if (userData.name) {
+                            setBusinessName(userData.name);
+                        }
+                    }
+                } catch (err) {
+                    console.error("Error loading sidebar business details: ", err);
+                }
+            } else {
+                setBusinessName("Zaydan Banquet Hall");
+            }
+        });
+        return () => unsubscribe();
+    }, []);
 
     const navItems = [
         { label: 'Account', icon: 'person', href: '/vendor-dashboard/settings/account' },
@@ -20,16 +55,12 @@ const SettingsSidebar = () => {
         <aside className="w-72 flex flex-col gap-6 sticky top-0 h-fit">
             <div className="bg-white p-8 rounded-[2.5rem] border border-outline-variant shadow-xl">
                 <div className="flex items-center gap-4 mb-10 px-2">
-                    <div className="w-12 h-12 rounded-2xl bg-secondary-container flex items-center justify-center overflow-hidden shadow-sm">
-                        <img 
-                            alt="Vendor Logo" 
-                            className="w-full h-full object-cover" 
-                            src="https://lh3.googleusercontent.com/aida-public/AB6AXuCq2lKnH-c7GHVZodKWGY194dAT6Icy07HuDEE9A7VZJVNp1xgXloLvwy8tGIe4amfRQfkePfsh-01pL_9aeOZv4Ds2z0TCoVSR4YyxvHQUSzWS6PKApKwiTWxSgV53eTHla0kjde7AfqNXe0w2VcEhuS3BZAhsGxgHGRUOxJFnexq5svECnFxTUvsg9BZ4pZFd10Hs99y2Fh1f3nd2R72NKdQco3A8583-3nS1fNajawe_vOCV3BsLtrDuXEOe56yVtv3x-eWFg9s"
-                        />
+                    <div className="w-12 h-12 rounded-2xl bg-primary/10 border-2 border-primary flex items-center justify-center font-black text-primary text-base shadow-sm">
+                        {businessName.slice(0, 2).toUpperCase()}
                     </div>
                     <div>
-                        <h3 className="text-lg font-black text-secondary leading-tight tracking-tight">Sweet Treats Co.</h3>
-                        <p className="text-[9px] text-on-surface-variant font-black uppercase tracking-[0.15em] mt-1 opacity-70">Verified Merchant</p>
+                        <h3 className="text-lg font-black text-secondary leading-tight tracking-tight max-w-[150px] truncate">{businessName}</h3>
+                        <p className="text-[9px] text-on-surface-variant font-black uppercase tracking-[0.15em] mt-1 opacity-70">Verified Venue</p>
                     </div>
                 </div>
 

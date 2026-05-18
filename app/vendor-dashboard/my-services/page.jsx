@@ -2,11 +2,13 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
-import { db } from "@/firebase";
+import { db, auth } from "@/firebase";
 import { doc, getDoc, setDoc } from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
 
 const MyServices = () => {
     const [activeTab, setActiveTab] = useState('Overview');
+    const [venueId, setVenueId] = useState("zaydan-banquet-hall");
     const [serviceActive, setServiceActive] = useState(true);
     const [faqOpen, setFaqOpen] = useState({ 0: true });
     const [isSaving, setIsSaving] = useState(false);
@@ -32,7 +34,7 @@ const MyServices = () => {
     // FAQs list state
     const [faqs, setFaqs] = useState([
         { id: "faq-1", question: "Is catering included in the base venue hire price?", answer: "Catering is not included in the base venue rate. You can choose to add our custom catering package under the Menu tab.", active: true },
-        { id: "faq-2", question: "What is the maximum capacity of the Grand Azure Ballroom?", answer: "The venue can comfortably accommodate up to 500 guests for banquet seating and up to 700 guests for standing reception setups.", active: true },
+        { id: "faq-2", question: "What is the maximum capacity of the Zaydan Banquet Hall?", answer: "The venue can comfortably accommodate up to 500 guests for banquet seating and up to 700 guests for standing reception setups.", active: true },
         { id: "faq-3", question: "Do you provide in-house decoration packages?", answer: "Yes! We offer fully custom theme decorations, floral settings, and lighting schemes. Toggle options are available under our Pricing tab.", active: true },
         { id: "faq-4", question: "Is there a backup power generator available in case of outages?", answer: "Yes, we have high-capacity diesel backup generators that can run all critical lights and air conditioners during utility blackouts.", active: true },
         { id: "faq-5", question: "Are external catering vendors allowed at the venue?", answer: "Usually, we prefer our in-house premium caterers. However, certified external caterers may be allowed under special facility charges.", active: true }
@@ -40,12 +42,9 @@ const MyServices = () => {
 
     // Dynamic Images State
     const [images, setImages] = useState([
-        { id: "img-1", url: "/Marriage_hall/Qasar E Zaydan/1.jpeg", label: "Qasar E Zaydan Main Entrance", isPrimary: true },
-        { id: "img-2", url: "/Marriage_hall/Qasar E Zaydan/2.jpg", label: "Luxury Red & Gold stage decor", isPrimary: false },
-        { id: "img-3", url: "/Marriage_hall/Qasar E Zaydan/3.jpeg", label: "Premium fine dine guest tables", isPrimary: false },
-        { id: "img-4", url: "/Marriage_hall/Zaydan Banquet Hall/1.webp", label: "Zaydan Banquet Royal Ballroom", isPrimary: false },
-        { id: "img-5", url: "/Marriage_hall/Zaydan Banquet Hall/2.webp", label: "Vibrant custom ambient lighting", isPrimary: false },
-        { id: "img-6", url: "/Marriage_hall/Zaydan Banquet Hall/3.jpg", label: "Royal floral setting & logistics", isPrimary: false }
+        { id: "img-1", url: "/Marriage_hall/Zaydan Banquet Hall/2.webp", label: "Zaydan Banquet Hall Main Entrance", isPrimary: true },
+        { id: "img-2", url: "/Marriage_hall/Zaydan Banquet Hall/1.webp", label: "Zaydan Banquet Royal Ballroom", isPrimary: false },
+        { id: "img-3", url: "/Marriage_hall/Zaydan Banquet Hall/3.jpg", label: "Royal floral setting & logistics", isPrimary: false }
     ]);
 
     // Description & Features
@@ -300,11 +299,44 @@ const MyServices = () => {
 
     const tabs = ['Overview', 'Images', 'Description', 'Pricing', 'Menu', 'Calendar', 'Location', 'Reviews', 'FAQs'];
 
-    // Load active settings from Firestore on mount
+    // 1. Resolve logged-in vendor's associated venue document ID dynamically from auth session
+    useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                try {
+                    // Fetch user document from users collection to extract associated venueId
+                    const userDocRef = doc(db, "users", user.uid);
+                    const userDocSnap = await getDoc(userDocRef);
+                    if (userDocSnap.exists()) {
+                        const userData = userDocSnap.data();
+                        if (userData.venueId) {
+                            setVenueId(userData.venueId);
+                        } else if (userData.role === "vendor") {
+                            // Fallback to vendor's uid if no explicit venueId is set
+                            setVenueId(user.uid);
+                        }
+                    } else {
+                        // Profile missing but authenticated as vendor? Fallback to uid
+                        setVenueId(user.uid);
+                    }
+                } catch (err) {
+                    console.error("Error resolving vendor multi-tenant context: ", err);
+                }
+            } else {
+                // If not logged in, we preserve development mode pointing to zaydan-banquet-hall
+                setVenueId("zaydan-banquet-hall");
+            }
+        });
+
+        return () => unsubscribe();
+    }, []);
+
+    // 2. Load active settings from Firestore dynamically when venueId changes
     useEffect(() => {
         const fetchVenueData = async () => {
+            setIsLoading(true);
             try {
-                const docRef = doc(db, "venues", "grand-azure-ballroom");
+                const docRef = doc(db, "venues", venueId);
                 const docSnap = await getDoc(docRef);
                 if (docSnap.exists()) {
                     const data = docSnap.data();
@@ -312,7 +344,21 @@ const MyServices = () => {
                     if (data.features) setFeatures(data.features);
                     if (data.serviceActive !== undefined) setServiceActive(data.serviceActive);
                     if (data.faqs) setFaqs(data.faqs);
-                    if (data.images) setImages(data.images);
+                    
+                    if (data.images) {
+                        // Dynamically resolve image folder mapping based on target venue profile
+                        const isZaydan = venueId === "zaydan-banquet-hall";
+                        const isQasar = venueId === "qasar-e-zaydan";
+                        const filtered = data.images.filter(img => 
+                            img.url && (
+                                isZaydan ? img.url.includes("Zaydan Banquet Hall") :
+                                isQasar ? img.url.includes("Qasar E Zaydan") : true
+                            )
+                        );
+                        if (filtered.length > 0) {
+                            setImages(filtered);
+                        }
+                    }
                     
                     // Populate loaded Menu Structure if it exists
                     if (data.menuPackage) {
@@ -330,7 +376,7 @@ const MyServices = () => {
             }
         };
         fetchVenueData();
-    }, []);
+    }, [venueId]);
 
     const toggleFaq = (faqId) => {
         setFaqOpen(prev => ({ ...prev, [faqId]: !prev[faqId] }));
@@ -353,7 +399,7 @@ const MyServices = () => {
     const handleSaveChanges = async () => {
         setIsSaving(true);
         try {
-            const docRef = doc(db, "venues", "grand-azure-ballroom");
+            const docRef = doc(db, "venues", venueId);
             
             // Format first package for estimation calculator dropdown
             const headPrice = categories.length > 0 && categories[0].items.length > 0 
@@ -387,7 +433,7 @@ const MyServices = () => {
             triggerToast("Database published successfully!");
         } catch (err) {
             console.error("Firestore Write Failed: ", err);
-            triggerToast("Error publishing data to database.", "error");
+            triggerToast(`Publish Failed: ${err.code === "permission-denied" ? "Missing or insufficient database permissions. Please log in." : err.message}`, "error");
         } finally {
             setIsSaving(false);
         }
@@ -1006,7 +1052,7 @@ const MyServices = () => {
                         <span className="material-symbols-outlined text-xs text-primary">chevron_right</span>
                         <span className="text-primary">My Services</span>
                     </nav>
-                    <h2 className="text-3xl font-black text-on-surface tracking-tight">Edit Service: <span className="text-secondary">Grand Azure Ballroom</span></h2>
+                    <h2 className="text-3xl font-black text-on-surface tracking-tight">Edit Service: <span className="text-secondary">Zaydan Banquet Hall</span></h2>
                 </div>
                 <div className="flex items-center gap-3">
                     <button 
@@ -1162,7 +1208,7 @@ const MyServices = () => {
                                         <div className="space-y-3">
                                             <div>
                                                 <label className="text-[10px] font-bold text-outline uppercase tracking-wider">Service Name</label>
-                                                <p className="font-bold text-secondary text-sm">Grand Azure Ballroom</p>
+                                                <p className="font-bold text-secondary text-sm">Zaydan Banquet Hall</p>
                                             </div>
                                             <div>
                                                 <label className="text-[10px] font-bold text-outline uppercase tracking-wider">Category</label>
@@ -1376,22 +1422,23 @@ const MyServices = () => {
                                                 onChange={(e) => {
                                                     if (!e.target.value) return;
                                                     const selectedUrl = e.target.value;
-                                                    let selectedLabel = "Zaydan Banquet Gallery";
-                                                    if (selectedUrl.includes("Qasar E Zaydan")) {
-                                                        selectedLabel = "Qasar E Zaydan Gallery " + (images.length + 1);
+                                                    let selectedLabel = "Zaydan Banquet Hall Gallery";
+                                                    if (selectedUrl.includes("1.webp")) {
+                                                        selectedLabel = "Zaydan Banquet Hall Interior";
+                                                    } else if (selectedUrl.includes("2.webp")) {
+                                                        selectedLabel = "Zaydan Banquet Hall Entrance";
+                                                    } else if (selectedUrl.includes("3.jpg")) {
+                                                        selectedLabel = "Zaydan Banquet Hall Stage Decor";
                                                     }
                                                     handleAddImage(selectedUrl, selectedLabel);
                                                     e.target.value = "";
                                                 }}
                                                 className="w-full bg-white border border-slate-200 rounded-full px-4 py-2 font-bold text-[11px] text-on-surface focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
                                             >
-                                                <option value="">-- Choose Zaydan Hall Image --</option>
-                                                <option value="/Marriage_hall/Qasar E Zaydan/1.jpeg">Qasar E Zaydan 1 (Entrance)</option>
-                                                <option value="/Marriage_hall/Qasar E Zaydan/2.jpg">Qasar E Zaydan 2 (Stage & Themes)</option>
-                                                <option value="/Marriage_hall/Qasar E Zaydan/3.jpeg">Qasar E Zaydan 3 (Tables Seating)</option>
-                                                <option value="/Marriage_hall/Zaydan Banquet Hall/1.webp">Zaydan Banquet 1 (Banquet Foyer)</option>
-                                                <option value="/Marriage_hall/Zaydan Banquet Hall/2.webp">Zaydan Banquet 2 (Ballroom Decor)</option>
-                                                <option value="/Marriage_hall/Zaydan Banquet Hall/3.jpg">Zaydan Banquet 3 (Floral Table center)</option>
+                                                <option value="">-- Choose Zaydan Banquet Hall Image --</option>
+                                                <option value="/Marriage_hall/Zaydan Banquet Hall/2.webp">Zaydan Banquet Hall 2 (Main Entrance - Yellow Building)</option>
+                                                <option value="/Marriage_hall/Zaydan Banquet Hall/1.webp">Zaydan Banquet Hall 1 (Royal Interior)</option>
+                                                <option value="/Marriage_hall/Zaydan Banquet Hall/3.jpg">Zaydan Banquet Hall 3 (Floral Stage Decor)</option>
                                             </select>
 
                                             <div className="flex items-center gap-1.5 justify-center py-1">
@@ -2005,7 +2052,7 @@ const MyServices = () => {
                             >
                                 <div>
                                     <h3 className="text-2xl font-black text-on-surface tracking-tight">Availability Calendar</h3>
-                                    <p className="text-sm font-medium text-on-surface-variant mt-1">Block specific dates or manage blackout windows for Grand Azure Ballroom.</p>
+                                    <p className="text-sm font-medium text-on-surface-variant mt-1">Block specific dates or manage blackout windows for Zaydan Banquet Hall.</p>
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -2135,7 +2182,7 @@ const MyServices = () => {
 
                                 <div className="space-y-6">
                                     {[
-                                        { id: 1, name: "Sarah Jenkins", role: "Wedding Bride", rating: 5, date: "Yesterday, 3:15 PM", comment: "The Grand Azure Ballroom was the absolute venue of my dreams! The lighting was magical, the team assisted with every setup request, and our guests were in complete awe of the massive chandeliers.", avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=256" }
+                                        { id: 1, name: "Sarah Jenkins", role: "Wedding Bride", rating: 5, date: "Yesterday, 3:15 PM", comment: "Zaydan Banquet Hall was the absolute venue of my dreams! The lighting was magical, the team assisted with every setup request, and our guests were in complete awe of the elegant layout.", avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=256" }
                                     ].map((rev) => (
                                         <div key={rev.id} className="p-6 rounded-3xl bg-surface-container-low border border-outline-variant/20 space-y-4">
                                             <div className="flex justify-between items-start flex-col sm:flex-row gap-4">
