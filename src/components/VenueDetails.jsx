@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Star, MapPin, Users, DollarSign, CheckCircle, Phone, Info } from 'lucide-react';
+import { ArrowLeft, Star, MapPin, Users, DollarSign, CheckCircle, Phone, Info, Calendar } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import DashboardHeader from './DashboardHeader';
 import Footer from './Footer';
 import hallsData from '../data/halls.json';
 import { db } from "../firebase";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, addDoc } from "firebase/firestore";
 
 const VenueDetails = () => {
   const { id } = useParams();
@@ -42,6 +42,17 @@ const VenueDetails = () => {
   const [includeDecor, setIncludeDecor] = useState(false);
   const [includeSound, setIncludeSound] = useState(false);
   const [includeSecurity, setIncludeSecurity] = useState(false);
+  const [showMenuModal, setShowMenuModal] = useState(false);
+
+  // Customer quote form inputs states
+  const [clientName, setClientName] = useState("");
+  const [clientContact, setClientContact] = useState("");
+  const [eventDate, setEventDate] = useState("");
+  const [eventTiming, setEventTiming] = useState("Morning (1:00 PM - 4:00 PM)");
+  const [eventCategory, setEventCategory] = useState("Barat");
+  const [quoteSubmitted, setQuoteSubmitted] = useState(false);
+  const [isSubmittingQuote, setIsSubmittingQuote] = useState(false);
+  const [quoteToast, setQuoteToast] = useState({ show: false, message: "", type: "success" });
 
   const getFirestoreDocId = (venueObj) => {
     if (!venueObj) return null;
@@ -72,21 +83,29 @@ const VenueDetails = () => {
           }
         } else {
           // Document does not exist in Firestore! Auto-seed it with best-practice default data from local asset definitions
-          const chickenPrice = Math.round((parseInt(venue.one_dish_chicken) || 1600) / 45) || 35;
-          const beefPrice = Math.round((parseInt(venue.one_dish_beef) || 2250) / 50) || 45;
-          const muttonPrice = Math.round((parseInt(venue.one_dish_mutton) || 3000) / 45) || 65;
+          const chickenPrice = parseInt(venue.one_dish_chicken) || 2000;
+          const beefPrice = parseInt(venue.one_dish_beef) || 2850;
+          const muttonPrice = parseInt(venue.one_dish_mutton) || 4100;
 
           const defaultData = {
             pricing: {
-              hallRent: venue.price_range ? parseInt(venue.price_range.replace(/[^0-9]/g, '')) || 2500 : 2500,
-              acCost: 500,
-              generatorCost: 350,
+              hallRent: (() => {
+                if (!venue.price_range) return 250000;
+                const numbers = venue.price_range.replace(/,/g, '').match(/\d+/g);
+                if (numbers && numbers.length > 0) {
+                  const val = parseInt(numbers[0]);
+                  return val > 20000 ? val : 250000;
+                }
+                return 250000;
+              })(),
+              acCost: 25000,
+              generatorCost: 15000,
               decorAvailable: true,
-              decorPrice: 1200,
+              decorPrice: 120000,
               soundAvailable: true,
-              soundPrice: 850,
+              soundPrice: 25000,
               securityAvailable: true,
-              securityPrice: 400
+              securityPrice: 20000
             },
             cateringPackages: [
               {
@@ -144,6 +163,16 @@ const VenueDetails = () => {
     fetchDbVenue();
   }, [venue]);
 
+  const maxCapacity = dbVenue?.capacity || (venue?.capacity_sitting ? parseInt(venue.capacity_sitting) : 500) || 500;
+  const bookedDates = dbVenue?.bookedDates || [5, 12, 13, 20, 26, 27];
+  const blackoutDates = dbVenue?.blackoutDates || [14, 15];
+
+  useEffect(() => {
+    if (guestsCount > maxCapacity) {
+      setGuestsCount(maxCapacity);
+    }
+  }, [maxCapacity, guestsCount]);
+
   if (!venue) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -159,40 +188,220 @@ const VenueDetails = () => {
 
   // Operational Pricing and Catering Tiers (from Firestore DB or default fallback templates)
   const activePricing = dbVenue?.pricing || {
-    hallRent: 2800,
-    acCost: 500,
-    generatorCost: 350,
+    hallRent: 250000,
+    acCost: 25000,
+    generatorCost: 15000,
     decorAvailable: true,
-    decorPrice: 1200,
+    decorPrice: 120000,
     soundAvailable: true,
-    soundPrice: 850,
+    soundPrice: 25000,
     securityAvailable: true,
-    securityPrice: 400
+    securityPrice: 20000
   };
 
-  const activePackages = dbVenue?.cateringPackages || [
-    {
-      id: 'pkg-1',
-      name: "Barat Luxury Menu",
-      type: "Barat",
-      perPlatePrice: 45,
-      dishes: ["Chicken Biryani", "Mutton Qorma", "Raita & Salad", "Assorted Naan", "Shahi Kheer"]
-    },
-    {
-      id: 'pkg-2',
-      name: "Mehndi Feast Chicken Menu",
-      type: "Chicken",
-      perPlatePrice: 32,
-      dishes: ["Chicken Pulao", "Chicken Seekh Kabab", "Fresh Salad", "Mint Raita", "Jalebi"]
-    },
-    {
-      id: 'pkg-3',
-      name: "Royal Mutton Walima Menu",
-      type: "Mutton",
-      perPlatePrice: 65,
-      dishes: ["Mutton Mandi", "Mutton Karahi", "Hummus & Pita", "Special Salad", "Shahi Tukray"]
+  const activePackages = (() => {
+    const dbPkgs = dbVenue?.cateringPackages || [];
+    
+    const chickenPrice = dbVenue?.pricing?.chickenPrice || parseInt(venue?.one_dish_chicken) || 1400;
+    const beefPrice = dbVenue?.pricing?.beefPrice || parseInt(venue?.one_dish_beef) || 2000;
+    const muttonPrice = dbVenue?.pricing?.muttonPrice || parseInt(venue?.one_dish_mutton) || 3000;
+    const mehndiPrice = dbVenue?.pricing?.mehndiPrice || 1200;
+    
+    const standardPkgs = [
+      {
+        id: 'pkg-2',
+        name: "Mehndi Feast Chicken Menu",
+        type: "Chicken",
+        perPlatePrice: chickenPrice,
+        dishes: ["Chicken Pulao", "Chicken Seekh Kabab", "Fresh Salad", "Mint Raita", "Jalebi"],
+        categories: [
+          {
+            id: "cat-1",
+            name: "Main Course",
+            items: [
+              { id: "item-1", name: "Chicken Karahi", description: "Wok-fried chicken with ginger, green chillies and traditional spices.", active: true },
+              { id: "item-2", name: "Chicken Biryani", description: "Aromatic basmati rice layered with spiced chicken and saffron.", active: true },
+              { id: "item-3", name: "Chicken Handi", description: "Boneless chicken cooked in a rich, creamy tomato-based gravy.", active: true }
+            ]
+          },
+          {
+            id: "cat-2",
+            name: "Sides & Salads",
+            items: [
+              { id: "item-4", name: "Fresh Salad", description: "Seasonal garden fresh vegetables slice cut.", active: true },
+              { id: "item-5", name: "Mint Raita", description: "Creamy yogurt infused with fresh mint leaves.", active: true }
+            ]
+          },
+          {
+            id: "cat-3",
+            name: "Beverages",
+            items: [
+              { id: "item-6", name: "Soft Drinks", description: "Assorted cold carbonated sodas.", active: true },
+              { id: "item-7", name: "Mint Margarita", description: "Refreshing blend of fresh mint, lime, and crushed ice.", active: true }
+            ]
+          },
+          {
+            id: "cat-4",
+            name: "Desserts",
+            items: [
+              { id: "item-8", name: "Shahi Kheer", description: "Traditional slow-cooked rice pudding topped with almonds.", active: true }
+            ]
+          }
+        ]
+      },
+      {
+        id: 'pkg-1',
+        name: "Barat Luxury Beef Menu",
+        type: "Beef",
+        perPlatePrice: beefPrice,
+        dishes: ["Beef Biryani", "Beef Qorma", "Raita & Salad", "Assorted Naan", "Shahi Kheer"],
+        categories: [
+          {
+            id: "cat-1",
+            name: "Main Course",
+            items: [
+              { id: "item-b1", name: "Beef Biryani", description: "Spiced beef nested in fragrant saffron basmati rice.", active: true },
+              { id: "item-b2", name: "Beef Kabab Platters", description: "Skewered charbroiled minced beef kababs.", active: true }
+            ]
+          },
+          {
+            id: "cat-2",
+            name: "Sides & Salads",
+            items: [
+              { id: "item-b3", name: "Special Salad", description: "Lettuce, tomatoes, red onions with lemon herb dressings.", active: true },
+              { id: "item-b4", name: "Roghni Naan", description: "Freshly baked buttered sesame flatbread.", active: true }
+            ]
+          },
+          {
+            id: "cat-3",
+            name: "Beverages",
+            items: [
+              { id: "item-b5", name: "Lassi & Shakes", description: "Chilled yogurt shake or mango milkshake.", active: true }
+            ]
+          },
+          {
+            id: "cat-4",
+            name: "Desserts",
+            items: [
+              { id: "item-b6", name: "Gulab Jamun", description: "Warm syrup soaked condensed milk balls.", active: true }
+            ]
+          }
+        ]
+      },
+      {
+        id: 'pkg-3',
+        name: "Royal Mutton Walima Menu",
+        type: "Mutton",
+        perPlatePrice: muttonPrice,
+        dishes: ["Mutton Mandi", "Mutton Karahi", "Hummus & Pita", "Special Salad", "Shahi Tukray"],
+        categories: [
+          {
+            id: "cat-1",
+            name: "Main Course",
+            items: [
+              { id: "item-m1", name: "Mutton Karahi", description: "Royal mutton slow cooked in a base of tomatoes, garlic, ginger and spices.", active: true },
+              { id: "item-m2", name: "Mutton Pulao", description: "Premium basmati rice simmered in rich mutton broth.", active: true }
+            ]
+          },
+          {
+            id: "cat-2",
+            name: "Sides & Salads",
+            items: [
+              { id: "item-m3", name: "Garlic Butter Naan", description: "Oven baked bread with fresh garlic and cilantro butter.", active: true }
+            ]
+          },
+          {
+            id: "cat-3",
+            name: "Beverages",
+            items: [
+              { id: "item-m4", name: "Fresh Juice Platter", description: "Squeezed orange, apple, and grape juice collection.", active: true }
+            ]
+          },
+          {
+            id: "cat-4",
+            name: "Desserts",
+            items: [
+              { id: "item-m5", name: "Zafrani Rasmalai", description: "Saffron milk infused cottage cheese discs.", active: true }
+            ]
+          }
+        ]
+      },
+      {
+        id: 'pkg-4',
+        name: "Mehndi Special Menu",
+        type: "Mehndi",
+        perPlatePrice: mehndiPrice,
+        dishes: ["Puri Halwa Chana", "Gol Gappay Setup", "Dahi Bhallay", "Kashmiri Chai", "Live Jalebi"],
+        categories: [
+          {
+            id: "cat-1",
+            name: "Main Course",
+            items: [
+              { id: "item-e1", name: "Puri Halwa Chana", description: "Crispy fried puris served with semolina halwa and spicy chickpea gravy.", active: true },
+              { id: "item-e2", name: "Gol Gappay Setup", description: "Crispy semolina spheres with sweet and sour spiced water.", active: true }
+            ]
+          },
+          {
+            id: "cat-2",
+            name: "Sides & Salads",
+            items: [
+              { id: "item-e3", name: "Dahi Bhallay", description: "Soft lentil dumplings soaked in seasoned thick yogurt.", active: true }
+            ]
+          },
+          {
+            id: "cat-3",
+            name: "Beverages",
+            items: [
+              { id: "item-e4", name: "Special Kashmiri Chai", description: "Traditional pink tea topped with pistachios.", active: true }
+            ]
+          },
+          {
+            id: "cat-4",
+            name: "Desserts",
+            items: [
+              { id: "item-e5", name: "Hot Live Jalebi", description: "Freshly made spiral crispy flour sweets soaked in sugar syrup.", active: true }
+            ]
+          }
+        ]
+      }
+    ];
+
+    if (dbPkgs.length > 0) {
+      // Build active packages list by merging custom published packages
+      // Filter out standard packages that match types of custom packages we have
+      const customTypes = dbPkgs.map(p => (p.type || "").toLowerCase());
+      const filteredStandards = standardPkgs.filter(std => {
+        const stdType = std.type.toLowerCase();
+        // Keep standard package only if we do not have a custom package of the same type
+        return !customTypes.includes(stdType);
+      });
+
+      const mappedDbPkgs = dbPkgs.map(pkg => {
+        const pkgType = pkg.type || "";
+        let price = pkg.perPlatePrice;
+        if (pkgType === "Chicken" && dbVenue?.pricing?.chickenPrice) price = dbVenue.pricing.chickenPrice;
+        else if (pkgType === "Beef" && dbVenue?.pricing?.beefPrice) price = dbVenue.pricing.beefPrice;
+        else if (pkgType === "Mutton" && dbVenue?.pricing?.muttonPrice) price = dbVenue.pricing.muttonPrice;
+        else if (pkgType === "Mehndi" && dbVenue?.pricing?.mehndiPrice) price = dbVenue.pricing.mehndiPrice;
+
+        let categories = pkg.categories;
+        if (!categories || categories.length === 0) {
+          const matchingStd = standardPkgs.find(s => s.type.toLowerCase() === pkgType.toLowerCase());
+          categories = matchingStd ? matchingStd.categories : [];
+        }
+
+        return {
+          ...pkg,
+          perPlatePrice: price,
+          categories
+        };
+      });
+      
+      return [...mappedDbPkgs, ...filteredStandards];
     }
-  ];
+    
+    return standardPkgs;
+  })();
 
   // Derived calculation variables for estimation engine
   const selectedPkg = activePackages.find(p => p.id === selectedPkgId) || activePackages[0];
@@ -203,6 +412,93 @@ const VenueDetails = () => {
                      (includeSound && activePricing.soundAvailable ? activePricing.soundPrice : 0) + 
                      (includeSecurity && activePricing.securityAvailable ? activePricing.securityPrice : 0);
   const totalEstimation = baseRent + cateringCost + utilitiesCost + addonsCost;
+
+  const triggerQuoteToast = (message, type = "success") => {
+    setQuoteToast({ show: true, message, type });
+    setTimeout(() => setQuoteToast({ show: false, message: "", type: "success" }), 3500);
+  };
+
+  const handleBookQuote = async (e) => {
+    e.preventDefault();
+    if (!clientName.trim() || !clientContact.trim() || !eventDate) {
+      triggerQuoteToast("Please fill in your Name, Contact, and Event Date!", "error");
+      return;
+    }
+
+    const docId = getFirestoreDocId(venue);
+
+    // Check if the selected date is already blocked in Firestore
+    if (dbVenue?.blockedDates && dbVenue.blockedDates.includes(eventDate)) {
+      triggerQuoteToast("Selected date is already booked at this venue! Please select another date.", "error");
+      return;
+    }
+
+    setIsSubmittingQuote(true);
+    const bookingId = `BK-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const bookingPayload = {
+      id: bookingId,
+      customer: {
+        name: clientName,
+        contact: clientContact,
+        otherName: "",
+        address: ""
+      },
+      eventDetails: {
+        category: eventCategory,
+        date: eventDate,
+        timing: eventTiming,
+        guests: parseInt(guestsCount, 10),
+        venueId: docId,
+        source: 'Online Portal'
+      },
+      catering: {
+        packageId: selectedPkgId || "",
+        packageName: selectedPkg?.name || 'Venue Hire Only',
+        perPlatePrice: selectedPkg ? selectedPkg.perPlatePrice : 0,
+        dishes: selectedPkg ? (selectedPkg.dishes || []) : []
+      },
+      addons: {
+        ac: includeAC,
+        generator: includeGenerator,
+        addonsCost: addonsCost,
+        decor: includeDecor,
+        sound: includeSound,
+        security: includeSecurity
+      },
+      financials: {
+        hallRent: baseRent,
+        cateringCost: cateringCost,
+        utilitiesCost: utilitiesCost,
+        addonsCost: addonsCost,
+        taxPercentage: 0,
+        taxCost: 0,
+        grandTotal: totalEstimation,
+        advancePaid: 0,
+        remainingBalance: totalEstimation
+      },
+      status: 'Pending', // online request starts as Pending
+      bookedDate: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    };
+
+    try {
+      const bookingsRef = collection(db, "bookings");
+      await addDoc(bookingsRef, bookingPayload);
+
+      setQuoteSubmitted(true);
+      triggerQuoteToast("Quote Request Submitted Successfully to Vendor ERP!");
+      
+      // Reset details
+      setClientName("");
+      setClientContact("");
+      setEventDate("");
+    } catch (err) {
+      console.error("Error submitting quote request: ", err);
+      triggerQuoteToast(`Failed to submit: ${err.message}`, "error");
+    } finally {
+      setIsSubmittingQuote(false);
+    }
+  };
 
   // Get folder path segment of current venue (e.g. "Zaydan Banquet Hall" or "Qasar E Zaydan")
   const getVenueFolderSegment = () => {
@@ -217,7 +513,7 @@ const VenueDetails = () => {
 
   // Pre-process images to fix pathing (load from Firestore if custom reordering was saved)
   const filteredDbImages = dbVenue?.images && dbVenue.images.length > 0
-    ? dbVenue.images.filter(img => img.url && folderSegment && img.url.includes(folderSegment)).map(img => img.url)
+    ? dbVenue.images.map(img => typeof img === 'string' ? img : (img?.url || img?.path)).filter(Boolean)
     : [];
 
   const images = filteredDbImages.length > 0 
@@ -304,22 +600,100 @@ const VenueDetails = () => {
               </p>
             </div>
 
+            {/* Availability Calendar Section */}
+            <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-gray-100 space-y-6">
+              <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-[#D6336C]" /> Availability Calendar
+              </h2>
+              <p className="text-sm text-gray-500 font-medium leading-relaxed">
+                Check available event dates for October 2024. Booked slots and blackout dates are synchronized live from the vendor's database.
+              </p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* Mini Calendar Grid */}
+                <div className="bg-gray-50/50 p-6 rounded-2xl border border-gray-100 shadow-inner">
+                  <div className="flex justify-between items-center mb-6">
+                    <h4 className="font-extrabold text-gray-800 text-sm uppercase tracking-wider">October 2024</h4>
+                  </div>
+                  <div className="grid grid-cols-7 gap-2 text-center text-[10px] font-black text-gray-400 uppercase mb-2">
+                    <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+                  </div>
+                  <div className="grid grid-cols-7 gap-2">
+                    {Array.from({ length: 31 }, (_, i) => {
+                      const day = i + 1;
+                      const isBooked = bookedDates.includes(day);
+                      const isBlackout = blackoutDates.includes(day);
+                      return (
+                        <div 
+                          key={day} 
+                          className={`h-10 rounded-xl flex items-center justify-center text-xs font-black select-none transition-all ${
+                            isBooked ? 'bg-[#D6336C] text-white shadow-sm font-black' :
+                            isBlackout ? 'bg-slate-400 text-white font-medium' :
+                            'bg-white text-gray-800 border border-gray-100 hover:border-[#D6336C]/40 hover:text-[#D6336C] shadow-sm'
+                          }`}
+                        >
+                          {day}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Calendar Legend & Booking Callout */}
+                <div className="space-y-6 flex flex-col justify-between">
+                  <div className="space-y-4">
+                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Calendar Legend</h4>
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-5 h-5 rounded-lg bg-[#D6336C] shadow-sm"></div>
+                        <span className="text-xs font-bold text-gray-700">Fully Booked / Blocked Date</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="w-5 h-5 rounded-lg bg-slate-400 shadow-sm"></div>
+                        <span className="text-xs font-bold text-gray-700">Vendor Blackout / Maintenance Day</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="w-5 h-5 rounded-lg bg-white border border-gray-200 shadow-sm"></div>
+                        <span className="text-xs font-bold text-gray-700">Available Slot</span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="p-4 bg-[#D6336C]/5 border border-[#D6336C]/10 rounded-2xl space-y-2">
+                    <span className="text-[10px] font-black text-[#D6336C] uppercase tracking-wider block">Planning an Event?</span>
+                    <p className="text-xs text-gray-600 leading-relaxed">
+                      Select your preferred date in the reservation quote form on the right side. Available slots fill up quickly during peak wedding seasons.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* Facilities Grid */}
             <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-gray-100">
               <h2 className="text-xl font-bold text-gray-900 mb-6">Facilities & Amenities</h2>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-y-4 gap-x-2">
-                {[
-                  { key: 'is_air_conditioned', label: 'Air Conditioned' },
-                  { key: 'generator_backup', label: 'Generator Backup' },
-                  { key: 'decoration_in_house', label: 'In-House Decor' },
-                  { key: 'bridal_room', label: 'Bridal Room' },
-                  { key: 'parking_capacity', label: `Parking: ${venue.parking_capacity || 'Yes'}` }
-                ].map((facility, i) => (
-                  <div key={i} className="flex items-center gap-2 text-gray-700 font-medium">
-                    <CheckCircle className={`w-5 h-5 ${venue[facility.key] === 'yes' || facility.key === 'parking_capacity' ? 'text-green-500' : 'text-gray-300'}`} />
-                    <span>{facility.label}</span>
-                  </div>
-                ))}
+                {dbVenue?.features && dbVenue.features.length > 0 ? (
+                  dbVenue.features.map((feature, i) => (
+                    <div key={i} className="flex items-center gap-2 text-gray-700 font-medium">
+                      <CheckCircle className="w-5 h-5 text-green-500" />
+                      <span>{feature}</span>
+                    </div>
+                  ))
+                ) : (
+                  [
+                    { key: 'is_air_conditioned', label: 'Air Conditioned' },
+                    { key: 'generator_backup', label: 'Generator Backup' },
+                    { key: 'decoration_in_house', label: 'In-House Decor' },
+                    { key: 'bridal_room', label: 'Bridal Room' },
+                    { key: 'parking_capacity', label: `Parking: ${venue.parking_capacity || 'Yes'}` }
+                  ].map((facility, i) => (
+                    <div key={i} className="flex items-center gap-2 text-gray-700 font-medium">
+                      <CheckCircle className={`w-5 h-5 ${venue[facility.key] === 'yes' || facility.key === 'parking_capacity' ? 'text-green-500' : 'text-gray-300'}`} />
+                      <span>{facility.label}</span>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
 
@@ -329,193 +703,354 @@ const VenueDetails = () => {
           <div className="lg:col-span-1">
             <div className="sticky top-24 space-y-6">
               
-              {/* Automated Cost Estimation Engine */}
+              {/* Automated Cost Estimation Engine & Booking Form */}
               <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 space-y-6">
                 <div className="border-b border-gray-100 pb-4">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"></span>
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Live Cost Estimator</span>
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Live Quote & Booking Form</span>
                   </div>
-                  <h3 className="text-xl font-black text-gray-900 tracking-tight">Automated Quote Engine</h3>
-                  <p className="text-xs text-gray-400">Configure logistics for an instant, error-free total breakdown.</p>
+                  <h3 className="text-xl font-black text-gray-900 tracking-tight">Request Event Quote</h3>
+                  <p className="text-xs text-gray-400">Configure logistics & client profile to send directly to Vendor ERP.</p>
                 </div>
 
-                {/* Input 1: Guest count */}
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center text-xs font-bold text-gray-700">
-                    <span>Number of Guests</span>
-                    <span className="text-[#D6336C] bg-[#D6336C]/10 px-2 py-0.5 rounded-md font-black">{guestsCount} Guests</span>
-                  </div>
-                  <input 
-                    type="range" 
-                    min="50" 
-                    max="1000" 
-                    step="10"
-                    value={guestsCount}
-                    onChange={(e) => setGuestsCount(parseInt(e.target.value) || 50)}
-                    className="w-full h-2 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-[#D6336C]"
-                  />
-                  <div className="flex justify-between text-[10px] text-gray-400 font-bold">
-                    <span>Min: 50</span>
-                    <span>Max: 1000</span>
-                  </div>
-                </div>
-
-                {/* Input 2: Catering Tier Packages */}
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Select Catering Package</label>
-                  <select 
-                    value={selectedPkgId}
-                    onChange={(e) => setSelectedPkgId(e.target.value)}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-xs font-bold text-gray-800 focus:ring-1 focus:ring-[#D6336C] cursor-pointer"
+                {quoteSubmitted ? (
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="bg-emerald-50 border border-emerald-100 rounded-2xl p-5 text-center space-y-4 shadow-inner"
                   >
-                    <option value="">No Food / Venue Hire Only</option>
-                    {activePackages.map(pkg => (
-                      <option key={pkg.id} value={pkg.id}>
-                        {pkg.name} ({pkg.type}) — ${pkg.perPlatePrice}/head
-                      </option>
-                    ))}
-                  </select>
+                    <div className="w-12 h-12 bg-emerald-500 text-white rounded-full flex items-center justify-center mx-auto shadow-md">
+                      <span className="material-symbols-outlined text-2xl font-black">task_alt</span>
+                    </div>
+                    <h4 className="text-sm font-black text-slate-800 uppercase tracking-wider">Proposal Transmitted!</h4>
+                    <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                      Your event request has been successfully dispatched to the **{venue.hall_name} Management Ledger**. 
+                      Our sales reps will review your requested date, catering configuration, and logistics, and follow up shortly.
+                    </p>
+                    <button
+                      onClick={() => setQuoteSubmitted(false)}
+                      className="w-full py-3 bg-white hover:bg-slate-50 text-slate-700 font-bold border border-slate-200 rounded-xl text-[10px] uppercase tracking-widest transition-all cursor-pointer"
+                    >
+                      Configure Another Quote
+                    </button>
+                  </motion.div>
+                ) : (
+                  <form onSubmit={handleBookQuote} className="space-y-5 text-left text-slate-700">
+                    {/* Section: Customer Profile */}
+                    <div className="space-y-3.5 bg-gray-50/50 p-4.5 rounded-2xl border border-gray-100">
+                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">1. Client Identification</span>
+                      
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest px-0.5">Your Full Name *</label>
+                        <input 
+                          type="text" 
+                          required
+                          value={clientName}
+                          onChange={(e) => setClientName(e.target.value)}
+                          placeholder="e.g. Ukasha Khan" 
+                          className="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-gray-800 focus:ring-1 focus:ring-[#D6336C] focus:border-[#D6336C] outline-none transition-all"
+                        />
+                      </div>
 
-                  {/* Dishes Preview */}
-                  {selectedPkg && (
-                    <div className="p-3 bg-pink-50/50 border border-pink-100 rounded-2xl space-y-1">
-                      <span className="text-[9px] font-black text-[#D6336C] uppercase tracking-wider block">Included Menu Dishes:</span>
-                      <div className="flex flex-wrap gap-1">
-                        {selectedPkg.dishes.map((dish, i) => (
-                          <span key={i} className="text-[9px] bg-white text-slate-700 px-2 py-0.5 rounded-full border border-slate-100 font-medium">
-                            {dish}
-                          </span>
-                        ))}
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest px-0.5">Contact Number / Email *</label>
+                        <input 
+                          type="text" 
+                          required
+                          value={clientContact}
+                          onChange={(e) => setClientContact(e.target.value)}
+                          placeholder="e.g. +92 300 1234567" 
+                          className="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-gray-800 focus:ring-1 focus:ring-[#D6336C] focus:border-[#D6336C] outline-none transition-all"
+                        />
                       </div>
                     </div>
-                  )}
-                </div>
 
-                {/* Input 3: Utility Charges */}
-                <div className="space-y-3 pt-3 border-t border-gray-100">
-                  <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Utility Configuration</label>
-                  
-                  <div className="flex items-center justify-between text-xs font-bold text-gray-700">
-                    <label className="flex items-center gap-2.5 cursor-pointer">
-                      <input 
-                        type="checkbox" 
-                        checked={includeAC}
-                        onChange={(e) => setIncludeAC(e.target.checked)}
-                        className="w-4.5 h-4.5 rounded border-gray-300 text-[#D6336C] focus:ring-[#D6336C]"
-                      />
-                      <span>Air Conditioning (AC)</span>
-                    </label>
-                    <span className="text-slate-500 font-extrabold">+${activePricing.acCost}</span>
-                  </div>
+                    {/* Section: Event Scheduling */}
+                    <div className="space-y-3.5 bg-gray-50/50 p-4.5 rounded-2xl border border-gray-100">
+                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">2. Event Schedule</span>
 
-                  <div className="flex items-center justify-between text-xs font-bold text-gray-700">
-                    <label className="flex items-center gap-2.5 cursor-pointer">
-                      <input 
-                        type="checkbox" 
-                        checked={includeGenerator}
-                        onChange={(e) => setIncludeGenerator(e.target.checked)}
-                        className="w-4.5 h-4.5 rounded border-gray-300 text-[#D6336C] focus:ring-[#D6336C]"
-                      />
-                      <span>Generator / Backup setup</span>
-                    </label>
-                    <span className="text-slate-500 font-extrabold">+${activePricing.generatorCost}</span>
-                  </div>
-                </div>
-
-                {/* Input 4: Optional Add-ons */}
-                <div className="space-y-3 pt-3 border-t border-gray-100">
-                  <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Optional Add-ons & Services</label>
-
-                  {activePricing.decorAvailable && (
-                    <div className="flex items-center justify-between text-xs font-bold text-gray-700">
-                      <label className="flex items-center gap-2.5 cursor-pointer">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest px-0.5">Preferred Event Date *</label>
                         <input 
-                          type="checkbox" 
-                          checked={includeDecor}
-                          onChange={(e) => setIncludeDecor(e.target.checked)}
-                          className="w-4.5 h-4.5 rounded border-gray-300 text-[#D6336C] focus:ring-[#D6336C]"
+                          type="date" 
+                          required
+                          value={eventDate}
+                          onChange={(e) => setEventDate(e.target.value)}
+                          className="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-gray-800 focus:ring-1 focus:ring-[#D6336C] focus:border-[#D6336C] outline-none transition-all"
                         />
-                        <span>Premium Décor Packages</span>
-                      </label>
-                      <span className="text-slate-500 font-extrabold">+${activePricing.decorPrice}</span>
-                    </div>
-                  )}
+                        {dbVenue?.blockedDates && dbVenue.blockedDates.includes(eventDate) && (
+                          <span className="text-[9px] text-red-500 font-black uppercase px-0.5 flex items-center gap-1 mt-1 animate-pulse">
+                            ✕ Date Already Booked at Venue!
+                          </span>
+                        )}
+                      </div>
 
-                  {activePricing.soundAvailable && (
-                    <div className="flex items-center justify-between text-xs font-bold text-gray-700">
-                      <label className="flex items-center gap-2.5 cursor-pointer">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest px-0.5">Event Slot *</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setEventTiming("Morning (1:00 PM - 4:00 PM)")}
+                            className={`py-2 px-2 rounded-xl text-[10px] font-black uppercase tracking-wider border transition-all flex flex-col items-center justify-center min-h-[42px] cursor-pointer
+                              ${eventTiming === "Morning (1:00 PM - 4:00 PM)"
+                                ? "bg-[#D6336C]/10 border-[#D6336C] text-[#D6336C] shadow-sm"
+                                : "bg-white border-gray-200 text-gray-500 hover:bg-gray-50"}`}
+                          >
+                            <span>Morning</span>
+                            <span className="text-[7.5px] opacity-75 font-bold">1PM - 4PM</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEventTiming("Evening (7:00 PM - 10:00 PM)")}
+                            className={`py-2 px-2 rounded-xl text-[10px] font-black uppercase tracking-wider border transition-all flex flex-col items-center justify-center min-h-[42px] cursor-pointer
+                              ${eventTiming === "Evening (7:00 PM - 10:00 PM)"
+                                ? "bg-[#D6336C]/10 border-[#D6336C] text-[#D6336C] shadow-sm"
+                                : "bg-white border-gray-200 text-gray-500 hover:bg-gray-50"}`}
+                          >
+                            <span>Evening</span>
+                            <span className="text-[7.5px] opacity-75 font-bold">7PM - 10PM</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest px-0.5">Event Category *</label>
+                        <select 
+                          value={eventCategory}
+                          onChange={(e) => setEventCategory(e.target.value)}
+                          className="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-gray-800 focus:ring-1 focus:ring-[#D6336C] focus:border-[#D6336C] outline-none cursor-pointer"
+                        >
+                          <option value="Barat">Barat Reception</option>
+                          <option value="Walima">Walima Banquet</option>
+                          <option value="Mehndi">Mehndi Feasts</option>
+                          <option value="Party">Social / Party</option>
+                          <option value="Corporate Event">Corporate Event</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Section: Estimator configuration */}
+                    <div className="space-y-4 pt-3 border-t border-gray-100">
+                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">3. Logistics & Setup</span>
+
+                      {/* Guest count */}
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center text-xs font-bold text-gray-700">
+                          <span>Number of Guests</span>
+                          <span className="text-[#D6336C] bg-[#D6336C]/10 px-2 py-0.5 rounded-md font-black">{guestsCount} Guests</span>
+                        </div>
                         <input 
-                          type="checkbox" 
-                          checked={includeSound}
-                          onChange={(e) => setIncludeSound(e.target.checked)}
-                          className="w-4.5 h-4.5 rounded border-gray-300 text-[#D6336C] focus:ring-[#D6336C]"
+                          type="range" 
+                          min="50" 
+                          max={maxCapacity} 
+                          step="10"
+                          value={guestsCount}
+                          onChange={(e) => setGuestsCount(Math.min(parseInt(e.target.value) || 50, maxCapacity))}
+                          className="w-full h-2 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-[#D6336C]"
                         />
-                        <span>Sound & DJ Systems</span>
-                      </label>
-                      <span className="text-slate-500 font-extrabold">+${activePricing.soundPrice}</span>
+                        <div className="flex justify-between text-[10px] text-gray-400 font-bold">
+                          <span>Min: 50</span>
+                          <span>Max: {maxCapacity}</span>
+                        </div>
+                      </div>
+
+                      {/* Catering Tier Packages */}
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Select Catering Package</label>
+                        <select 
+                          value={selectedPkgId}
+                          onChange={(e) => setSelectedPkgId(e.target.value)}
+                          className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-xs font-bold text-gray-800 focus:ring-1 focus:ring-[#D6336C] cursor-pointer"
+                        >
+                          <option value="">No Food / Venue Hire Only</option>
+                          {activePackages.map(pkg => (
+                            <option key={pkg.id} value={pkg.id}>
+                              {pkg.name} ({pkg.type}) — Rs. {pkg.perPlatePrice}/head
+                            </option>
+                          ))}
+                        </select>
+
+                        {/* Dishes Preview */}
+                        {selectedPkg && (
+                          <div className="p-3 bg-pink-50/50 border border-pink-100 rounded-2xl space-y-2">
+                            <span className="text-[9px] font-black text-[#D6336C] uppercase tracking-wider block">Included Menu Dishes:</span>
+                            <div className="flex flex-wrap gap-1">
+                              {selectedPkg.dishes.map((dish, i) => (
+                                <span key={i} className="text-[9px] bg-white text-slate-700 px-2 py-0.5 rounded-full border border-slate-100 font-medium">
+                                  {dish}
+                                </span>
+                              ))}
+                            </div>
+                            {selectedPkg?.categories && (
+                              <button 
+                                type="button"
+                                onClick={() => setShowMenuModal(true)}
+                                className="w-full mt-2 py-1.5 bg-[#D6336C] hover:bg-[#B82554] text-white rounded-xl text-[9px] font-black tracking-wider uppercase transition-colors cursor-pointer flex items-center justify-center gap-1 shadow-sm border-0"
+                              >
+                                <Info className="w-3 h-3" /> View Full Categorized Menu
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Utility Charges */}
+                      <div className="space-y-3 pt-3 border-t border-gray-100">
+                        <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Utility Configuration</label>
+                        
+                        <div className="flex items-center justify-between text-xs font-bold text-gray-700">
+                          <label className="flex items-center gap-2.5 cursor-pointer">
+                            <input 
+                              type="checkbox" 
+                              checked={includeAC}
+                              onChange={(e) => setIncludeAC(e.target.checked)}
+                              className="w-4.5 h-4.5 rounded border-gray-300 text-[#D6336C] focus:ring-[#D6336C]"
+                            />
+                            <span>Air Conditioning (AC)</span>
+                          </label>
+                          <span className="text-slate-500 font-extrabold">+Rs. {activePricing.acCost}</span>
+                        </div>
+
+                        <div className="flex items-center justify-between text-xs font-bold text-gray-700">
+                          <label className="flex items-center gap-2.5 cursor-pointer">
+                            <input 
+                              type="checkbox" 
+                              checked={includeGenerator}
+                              onChange={(e) => setIncludeGenerator(e.target.checked)}
+                              className="w-4.5 h-4.5 rounded border-gray-300 text-[#D6336C] focus:ring-[#D6336C]"
+                            />
+                            <span>Generator / Backup setup</span>
+                          </label>
+                          <span className="text-slate-500 font-extrabold">+Rs. {activePricing.generatorCost}</span>
+                        </div>
+                      </div>
+
+                      {/* Optional Add-ons */}
+                      <div className="space-y-3 pt-3 border-t border-gray-100">
+                        <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block">Optional Add-ons & Services</label>
+
+                        {activePricing.decorAvailable && (
+                          <div className="flex items-center justify-between text-xs font-bold text-gray-700">
+                            <label className="flex items-center gap-2.5 cursor-pointer">
+                              <input 
+                                type="checkbox" 
+                                checked={includeDecor}
+                                onChange={(e) => setIncludeDecor(e.target.checked)}
+                                className="w-4.5 h-4.5 rounded border-gray-300 text-[#D6336C] focus:ring-[#D6336C]"
+                              />
+                              <span>Premium Décor Packages</span>
+                            </label>
+                            <span className="text-slate-500 font-extrabold">+Rs. {activePricing.decorPrice}</span>
+                          </div>
+                        )}
+
+                        {activePricing.soundAvailable && (
+                          <div className="flex items-center justify-between text-xs font-bold text-gray-700">
+                            <label className="flex items-center gap-2.5 cursor-pointer">
+                              <input 
+                                type="checkbox" 
+                                checked={includeSound}
+                                onChange={(e) => setIncludeSound(e.target.checked)}
+                                className="w-4.5 h-4.5 rounded border-gray-300 text-[#D6336C] focus:ring-[#D6336C]"
+                              />
+                              <span>Sound & DJ Systems</span>
+                            </label>
+                            <span className="text-slate-500 font-extrabold">+Rs. {activePricing.soundPrice}</span>
+                          </div>
+                        )}
+
+                        {activePricing.securityAvailable && (
+                          <div className="flex items-center justify-between text-xs font-bold text-gray-700">
+                            <label className="flex items-center gap-2.5 cursor-pointer">
+                              <input 
+                                type="checkbox" 
+                                checked={includeSecurity}
+                                onChange={(e) => setIncludeSecurity(e.target.checked)}
+                                className="w-4.5 h-4.5 rounded border-gray-300 text-[#D6336C] focus:ring-[#D6336C]"
+                              />
+                              <span>Valet & Event Security</span>
+                            </label>
+                            <span className="text-slate-500 font-extrabold">+Rs. {activePricing.securityPrice}</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  )}
 
-                  {activePricing.securityAvailable && (
-                    <div className="flex items-center justify-between text-xs font-bold text-gray-700">
-                      <label className="flex items-center gap-2.5 cursor-pointer">
-                        <input 
-                          type="checkbox" 
-                          checked={includeSecurity}
-                          onChange={(e) => setIncludeSecurity(e.target.checked)}
-                          className="w-4.5 h-4.5 rounded border-gray-300 text-[#D6336C] focus:ring-[#D6336C]"
-                        />
-                        <span>Valet & Event Security</span>
-                      </label>
-                      <span className="text-slate-500 font-extrabold">+${activePricing.securityPrice}</span>
+                    {/* Calculations Summary Breakdown */}
+                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-2.5">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Cost Breakdown</span>
+                      
+                      <div className="flex justify-between items-center text-xs text-slate-600 font-medium">
+                        <span>Base Hall Rent:</span>
+                        <span className="font-bold text-slate-800">Rs. {baseRent}</span>
+                      </div>
+
+                      {cateringCost > 0 && (
+                        <div className="flex justify-between items-center text-xs text-slate-600 font-medium">
+                          <span>Catering Subtotal ({guestsCount} × Rs. {selectedPkg?.perPlatePrice}):</span>
+                          <span className="font-bold text-slate-800">Rs. {cateringCost}</span>
+                        </div>
+                      )}
+
+                      {utilitiesCost > 0 && (
+                        <div className="flex justify-between items-center text-xs text-slate-600 font-medium">
+                          <span>Utility Setup Fees:</span>
+                          <span className="font-bold text-slate-800">Rs. {utilitiesCost}</span>
+                        </div>
+                      )}
+
+                      {addonsCost > 0 && (
+                        <div className="flex justify-between items-center text-xs text-slate-600 font-medium">
+                          <span>Optional Services:</span>
+                          <span className="font-bold text-slate-800">Rs. {addonsCost}</span>
+                        </div>
+                      )}
+
+                      <div className="border-t border-slate-200/60 pt-2.5 flex justify-between items-center">
+                        <span className="text-sm font-black text-slate-800">Total Estimation:</span>
+                        <span className="text-xl font-black text-[#D6336C]">Rs. {totalEstimation}</span>
+                      </div>
                     </div>
-                  )}
-                </div>
 
-                {/* Calculations Summary Breakdown */}
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-2.5">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Cost Breakdown</span>
-                  
-                  <div className="flex justify-between items-center text-xs text-slate-600 font-medium">
-                    <span>Base Hall Rent:</span>
-                    <span className="font-bold text-slate-800">${baseRent}</span>
-                  </div>
-
-                  {cateringCost > 0 && (
-                    <div className="flex justify-between items-center text-xs text-slate-600 font-medium">
-                      <span>Catering Subtotal ({guestsCount} × ${selectedPkg?.perPlatePrice}):</span>
-                      <span className="font-bold text-slate-800">${cateringCost}</span>
-                    </div>
-                  )}
-
-                  {utilitiesCost > 0 && (
-                    <div className="flex justify-between items-center text-xs text-slate-600 font-medium">
-                      <span>Utility Setup Fees:</span>
-                      <span className="font-bold text-slate-800">${utilitiesCost}</span>
-                    </div>
-                  )}
-
-                  {addonsCost > 0 && (
-                    <div className="flex justify-between items-center text-xs text-slate-600 font-medium">
-                      <span>Optional Services:</span>
-                      <span className="font-bold text-slate-800">${addonsCost}</span>
-                    </div>
-                  )}
-
-                  <div className="border-t border-slate-200/60 pt-2.5 flex justify-between items-center">
-                    <span className="text-sm font-black text-slate-800">Total Estimation:</span>
-                    <span className="text-xl font-black text-[#D6336C]">${totalEstimation}</span>
-                  </div>
-                </div>
-
-                <button 
-                  onClick={() => alert(`Perfect! Dynamic estimation request submitted successfully with total estimated value of $${totalEstimation} for ${guestsCount} guests.`)}
-                  className="w-full bg-gradient-to-r from-[#D6336C] to-[#B02A58] text-white py-4 rounded-xl font-bold shadow-md shadow-[#D6336C]/20 hover:shadow-lg transition-all hover:-translate-y-0.5 cursor-pointer text-center text-sm"
-                >
-                  Book Dynamic Quote Request
-                </button>
+                    <button 
+                      type="submit"
+                      disabled={isSubmittingQuote}
+                      className="w-full bg-gradient-to-r from-[#D6336C] to-[#B02A58] text-white py-4 rounded-xl font-bold shadow-md shadow-[#D6336C]/20 hover:shadow-lg transition-all hover:-translate-y-0.5 cursor-pointer text-center text-sm disabled:opacity-50"
+                    >
+                      {isSubmittingQuote ? (
+                        <>
+                          <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2 align-middle"></span>
+                          TRANSMITTING PROPOSAL...
+                        </>
+                      ) : (
+                        "Submit Dynamic Quote Proposal"
+                      )}
+                    </button>
+                  </form>
+                )}
               </div>
+
+              {/* Dynamic Quote Form Toast Feedback Notification */}
+              <AnimatePresence>
+                {quoteToast.show && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: -40, scale: 0.9 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -20, scale: 0.9 }}
+                    className={`fixed top-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-6 py-4 rounded-2xl shadow-xl border font-bold text-xs tracking-wider uppercase backdrop-blur-md transition-all
+                      ${quoteToast.type === 'success' 
+                        ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20 shadow-emerald-500/5' 
+                        : 'bg-rose-500/10 text-rose-600 border-rose-500/20 shadow-rose-500/5'
+                      }`}
+                  >
+                    <span className="material-symbols-outlined text-lg">
+                      {quoteToast.type === 'success' ? 'check_circle' : 'error'}
+                    </span>
+                    {quoteToast.message}
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {/* Contact Info Card */}
               <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
@@ -546,6 +1081,89 @@ const VenueDetails = () => {
       </main>
 
       <Footer />
+
+      {/* Dynamic Categorized Food Menu Modal */}
+      <AnimatePresence>
+        {showMenuModal && selectedPkg && (
+          <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white w-full max-w-2xl rounded-3xl overflow-hidden shadow-2xl border border-gray-100 flex flex-col max-h-[85vh]"
+            >
+              {/* Modal Header */}
+              <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gradient-to-r from-pink-50/20 to-white">
+                <div>
+                  <h3 className="text-xl font-extrabold text-gray-900 tracking-tight flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[#D6336C]">restaurant_menu</span>
+                    {selectedPkg.name || 'Catering Menu Package'}
+                  </h3>
+                  <p className="text-xs text-gray-500 font-bold mt-1">Live Menu Categories, Custom Dish Selections, and Pricing.</p>
+                </div>
+                <button 
+                  onClick={() => setShowMenuModal(false)}
+                  className="w-10 h-10 rounded-full bg-gray-100 hover:bg-pink-100 text-gray-400 hover:text-[#D6336C] transition-all flex items-center justify-center cursor-pointer border-0 font-sans font-bold"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Modal Body / Accordion List */}
+              <div className="p-6 overflow-y-auto space-y-6 flex-1 text-left">
+                {selectedPkg.categories && selectedPkg.categories.map((category) => (
+                  <div key={category.id} className="space-y-3">
+                    <div className="flex items-center gap-2 pb-2 border-b border-gray-100">
+                      <span className="text-sm font-black text-[#D6336C] tracking-wide uppercase">{category.name}</span>
+                      <span className="text-[10px] bg-pink-100 text-[#D6336C] px-2 py-0.5 rounded-full font-black">
+                        {category.items ? category.items.filter(it => it.active).length : 0} Active Dishes
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {category.items && category.items.map((item) => (
+                        <div 
+                          key={item.id} 
+                          className={`p-3.5 rounded-2xl border transition-all ${
+                            item.active 
+                              ? 'bg-white border-pink-100 shadow-sm' 
+                              : 'bg-gray-50 border-gray-100 opacity-60'
+                          }`}
+                        >
+                          <div className="flex justify-between items-start gap-2">
+                            <span className={`text-xs font-extrabold ${item.active ? 'text-gray-800 font-black' : 'text-gray-400 font-medium line-through'}`}>
+                              {item.name}
+                            </span>
+                          </div>
+                          {item.description && (
+                            <p className="text-[10px] text-gray-500 font-medium leading-relaxed mt-1">
+                              {item.description}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-6 border-t border-gray-100 bg-gray-50 flex items-center justify-between">
+                <div className="text-left">
+                  <span className="text-[9px] font-black text-gray-400 uppercase tracking-wider block">Estimated Setup Cost</span>
+                  <span className="text-lg font-black text-[#D6336C]">Rs. {selectedPkg?.perPlatePrice || 0} / Head</span>
+                </div>
+                <button 
+                  onClick={() => setShowMenuModal(false)}
+                  className="bg-gradient-to-r from-[#D6336C] to-[#B02A58] hover:shadow-lg text-white font-black text-xs uppercase tracking-wider px-6 py-3 rounded-full cursor-pointer transition-all border-0"
+                >
+                  Close Menu Viewer
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

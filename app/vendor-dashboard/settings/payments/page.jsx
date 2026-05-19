@@ -80,8 +80,8 @@ const PaymentsSettings = () => {
                         <div className="space-y-3">
                             <label className="text-[10px] font-black text-on-secondary-container uppercase tracking-widest ml-1">Minimum Payout</label>
                             <div className="relative">
-                                <span className="absolute left-6 top-1/2 -translate-y-1/2 font-black text-secondary text-lg">$</span>
-                                <input className="w-full pl-12 pr-6 py-5 rounded-[2rem] border-none focus:ring-4 focus:ring-primary/20 bg-white font-black text-on-surface text-lg shadow-inner" type="number" defaultValue="100.00"/>
+                                <span className="absolute left-6 top-1/2 -translate-y-1/2 font-black text-secondary text-lg">Rs.</span>
+                                <input className="w-full pl-16 pr-6 py-5 rounded-[2rem] border-none focus:ring-4 focus:ring-primary/20 bg-white font-black text-on-surface text-lg shadow-inner" type="number" defaultValue="50000.00"/>
                             </div>
                         </div>
                         
@@ -135,9 +135,9 @@ const PaymentsSettings = () => {
                             </thead>
                             <tbody className="divide-y divide-outline-variant/10">
                                 {[
-                                    { date: 'Oct 07, 2024', amount: '$1,450.80', status: 'Completed', color: 'tertiary' },
-                                    { date: 'Sep 30, 2024', amount: '$2,890.00', status: 'Completed', color: 'tertiary' },
-                                    { date: 'Sep 23, 2024', amount: '$940.15', status: 'Pending', color: 'secondary' },
+                                    { date: 'Oct 07, 2024', amount: 'Rs. 1,450.80', status: 'Completed', color: 'tertiary' },
+                                    { date: 'Sep 30, 2024', amount: 'Rs. 2,890.00', status: 'Completed', color: 'tertiary' },
+                                    { date: 'Sep 23, 2024', amount: 'Rs. 940.15', status: 'Pending', color: 'secondary' },
                                 ].map((payout, i) => (
                                     <tr key={i} className="hover:bg-surface-container-low/50 transition-colors group">
                                         <td className="px-10 py-8 font-bold text-on-surface text-sm tracking-tight">{payout.date}</td>

@@ -41,7 +41,7 @@ const VendorDashboard = () => {
 
     const metrics = [
         { icon: 'calendar_month', label: 'Total Bookings', value: '24', trend: '+12%', iconBg: 'bg-primary-fixed' },
-        { icon: 'payments', label: 'Revenue', value: '$4,250', trend: '+8%', iconBg: 'bg-tertiary-fixed' },
+        { icon: 'payments', label: 'Revenue', value: 'Rs. 4,250', trend: '+8%', iconBg: 'bg-tertiary-fixed' },
         { icon: 'notification_important', label: 'Pending Requests', value: '3', trendLabel: 'View All', iconBg: 'bg-error-container' },
         { icon: 'star', label: 'Average Rating', value: '4.8', trendLabel: '124 reviews', iconBg: 'bg-secondary-fixed' },
     ];

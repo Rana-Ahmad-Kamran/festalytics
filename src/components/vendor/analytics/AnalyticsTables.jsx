@@ -101,9 +101,9 @@ export const ServicePerformanceTable = () => (
                 </thead>
                 <tbody className="divide-y divide-outline-variant/30">
                     {[
-                        { name: 'Luxury Wedding Decor', bookings: 45, revenue: '$6,200', rating: 4.9, date: 'Oct 12, 2023', img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCp2NMw7fwpmKB-J2Syj-GD6qKA6mp-mZWCFn1DzGeJiqgEH_vb3onXfZlMFrA11uNK9dEdHXdVx1biO141HKVSoi6UPOrksUsQTv0yxyDG2eZfJawi_zDUvoadxXJGtYB0DRNuww99VioiT7t6qFNeyh_NBllNxUz9z5mJ_ib652R6fDZ-nUxshf16MrLGRz9lzpBp9Hl-5ThlQU-Osryjm2USwTDLlfdhWLRyNo7HeBWE7yENvlM5AGrzF5NqkjrTEPP_C7QO-_A' },
-                        { name: 'Gourmet Catering Pack', bookings: 38, revenue: '$4,150', rating: 4.7, date: 'Oct 10, 2023', img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAo9NTKjx5VatXfL5j3YCiI5_CsB_zFFcypPfww9bg7yrNsEx-yCMXjv0Dp2FQzrmJHBnWSqeIBuYK396sAt62XJHZSFXaYOnLHano_ZcK90MbZyu6YuWLEtldwZmmF7A03ReTqYXE0GYMmqjGro1bT9lTOZRSLlt9fuAax8weZ5AWOtRG5NqpzjIiZOxmADmYaLM-12p4M8g_juOevg4Gnl6WdYeouT5MUidoqsswVPSscZquw5HXj9oLf1ApwkoL8OTVM-1VxPqQ' },
-                        { name: 'Pro AV Setup', bookings: 24, revenue: '$1,800', rating: 4.5, date: 'Oct 08, 2023', img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDO-YCQhqjFOYzusdu-CvUX5ye6v23zzD6nPQ8AXkcVYojqOXlw4eoFBwzuzBhjCElysW_RxIILVGs5HUGIz_uINkILVhXiMAHDJOENsjadVZ_-B2bT9UoIuQsqAisOJvIlMTxLnqbLH7CBjVuz80CFTN8tZ5yxvCP63AcTAatJtF9PLHVR_AOTFXEJpEbpvKZjv2FYpWcxCwa7-PPnbCPPv6lXDpNuOP63sDDuCo4njy91g2hhDRRM1jXLuSGQSk09yt5LhIeNnm0' },
+                        { name: 'Luxury Wedding Decor', bookings: 45, revenue: 'Rs. 6,200', rating: 4.9, date: 'Oct 12, 2023', img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCp2NMw7fwpmKB-J2Syj-GD6qKA6mp-mZWCFn1DzGeJiqgEH_vb3onXfZlMFrA11uNK9dEdHXdVx1biO141HKVSoi6UPOrksUsQTv0yxyDG2eZfJawi_zDUvoadxXJGtYB0DRNuww99VioiT7t6qFNeyh_NBllNxUz9z5mJ_ib652R6fDZ-nUxshf16MrLGRz9lzpBp9Hl-5ThlQU-Osryjm2USwTDLlfdhWLRyNo7HeBWE7yENvlM5AGrzF5NqkjrTEPP_C7QO-_A' },
+                        { name: 'Gourmet Catering Pack', bookings: 38, revenue: 'Rs. 4,150', rating: 4.7, date: 'Oct 10, 2023', img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAo9NTKjx5VatXfL5j3YCiI5_CsB_zFFcypPfww9bg7yrNsEx-yCMXjv0Dp2FQzrmJHBnWSqeIBuYK396sAt62XJHZSFXaYOnLHano_ZcK90MbZyu6YuWLEtldwZmmF7A03ReTqYXE0GYMmqjGro1bT9lTOZRSLlt9fuAax8weZ5AWOtRG5NqpzjIiZOxmADmYaLM-12p4M8g_juOevg4Gnl6WdYeouT5MUidoqsswVPSscZquw5HXj9oLf1ApwkoL8OTVM-1VxPqQ' },
+                        { name: 'Pro AV Setup', bookings: 24, revenue: 'Rs. 1,800', rating: 4.5, date: 'Oct 08, 2023', img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDO-YCQhqjFOYzusdu-CvUX5ye6v23zzD6nPQ8AXkcVYojqOXlw4eoFBwzuzBhjCElysW_RxIILVGs5HUGIz_uINkILVhXiMAHDJOENsjadVZ_-B2bT9UoIuQsqAisOJvIlMTxLnqbLH7CBjVuz80CFTN8tZ5yxvCP63AcTAatJtF9PLHVR_AOTFXEJpEbpvKZjv2FYpWcxCwa7-PPnbCPPv6lXDpNuOP63sDDuCo4njy91g2hhDRRM1jXLuSGQSk09yt5LhIeNnm0' },
                     ].map((row, idx) => (
                         <tr key={idx} className="hover:bg-surface-container-low transition-colors group cursor-pointer">
                             <td className="px-8 py-5">
@@ -148,10 +148,10 @@ export const PaymentActivityTable = () => (
                     </thead>
                     <tbody className="divide-y divide-outline-variant/30">
                         {[
-                            { day: 'Monday', bookings: 12, revenue: '$1,200', active: false },
-                            { day: 'Wednesday', bookings: 15, revenue: '$1,450', active: false },
-                            { day: 'Saturday', bookings: 34, revenue: '$3,800', active: true },
-                            { day: 'Sunday', bookings: 28, revenue: '$2,900', active: true },
+                            { day: 'Monday', bookings: 12, revenue: 'Rs. 1,200', active: false },
+                            { day: 'Wednesday', bookings: 15, revenue: 'Rs. 1,450', active: false },
+                            { day: 'Saturday', bookings: 34, revenue: 'Rs. 3,800', active: true },
+                            { day: 'Sunday', bookings: 28, revenue: 'Rs. 2,900', active: true },
                         ].map((row, idx) => (
                             <tr key={idx} className={`hover:bg-surface-container-low transition-colors ${row.active ? 'bg-primary-fixed/20' : ''}`}>
                                 <td className="px-8 py-4 font-black text-sm text-on-surface">{row.day}</td>
@@ -181,9 +181,9 @@ export const PaymentActivityTable = () => (
                     </thead>
                     <tbody className="divide-y divide-outline-variant/30">
                         {[
-                            { date: 'Oct 14, 2023', id: '#BK-9021', amount: '$450', status: 'Paid', color: 'tertiary' },
-                            { date: 'Oct 14, 2023', id: '#BK-9018', amount: '$1,200', status: 'Paid', color: 'tertiary' },
-                            { date: 'Oct 13, 2023', id: '#BK-8995', amount: '$780', status: 'Pending', color: 'secondary' },
+                            { date: 'Oct 14, 2023', id: '#BK-9021', amount: 'Rs. 450', status: 'Paid', color: 'tertiary' },
+                            { date: 'Oct 14, 2023', id: '#BK-9018', amount: 'Rs. 1,200', status: 'Paid', color: 'tertiary' },
+                            { date: 'Oct 13, 2023', id: '#BK-8995', amount: 'Rs. 780', status: 'Pending', color: 'secondary' },
                         ].map((row, idx) => (
                             <tr key={idx} className="hover:bg-surface-container-low transition-colors">
                                 <td className="px-8 py-4 text-xs font-black text-outline uppercase tracking-widest">{row.date}</td>

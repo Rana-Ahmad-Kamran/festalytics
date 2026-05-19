@@ -22,6 +22,7 @@ const BusinessSettings = () => {
     const [streetAddress, setStreetAddress] = useState("Zaydan Hall Ground, Johar Town Block A");
     const [city, setCity] = useState("Lahore");
     const [postalCode, setPostalCode] = useState("54000");
+    const [capacity, setCapacity] = useState(500);
 
     // Toast helper
     const triggerToast = (message, type = "success") => {
@@ -62,6 +63,7 @@ const BusinessSettings = () => {
                         if (venueData.streetAddress) setStreetAddress(venueData.streetAddress);
                         if (venueData.city) setCity(venueData.city);
                         if (venueData.postalCode) setPostalCode(venueData.postalCode);
+                        if (venueData.capacity !== undefined) setCapacity(venueData.capacity);
                     } else {
                         // Seed database node with elegant defaults
                         await setDoc(venueDocRef, {
@@ -108,6 +110,7 @@ const BusinessSettings = () => {
                 streetAddress: streetAddress,
                 city: city,
                 postalCode: postalCode,
+                capacity: parseInt(capacity) || 500,
                 updatedAt: new Date().toISOString()
             }, { merge: true });
 
@@ -201,6 +204,15 @@ const BusinessSettings = () => {
                                     <option value="Catering Company">Premium Catering Merchant</option>
                                     <option value="Decor Services">Wedding Decorator Agency</option>
                                 </select>
+                            </div>
+                            <div className="space-y-3">
+                                <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest px-1">Maximum Guest Capacity</label>
+                                <input 
+                                    className="w-full rounded-2xl border-2 border-transparent bg-surface-container-low px-6 py-4 focus:border-primary focus:ring-0 font-bold text-sm outline-none transition-all" 
+                                    type="number" 
+                                    value={capacity}
+                                    onChange={(e) => setCapacity(e.target.value)}
+                                />
                             </div>
                             <div className="space-y-3">
                                 <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest px-1">Categories</label>

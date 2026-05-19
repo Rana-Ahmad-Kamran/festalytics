@@ -74,6 +74,7 @@ const AccountSettings = () => {
                 name: fullName,
                 phone: phone,
                 bio: bio,
+                venueId: "zaydan-banquet-hall",
                 updatedAt: new Date().toISOString()
             }, { merge: true });
 

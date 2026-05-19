@@ -52,14 +52,14 @@ const Step2Pricing = ({ formData, updateFormData, nextStep, prevStep }) => {
                         </div>
                     </div>
                     <div>
-                        <label className="block text-sm font-black text-on-surface-variant mb-2">Base Amount ($)</label>
+                        <label className="block text-sm font-black text-on-surface-variant mb-2">Base Amount (Rs.)</label>
                         <div className="relative">
-                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-outline font-black">$</span>
+                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-outline font-black">Rs.</span>
                             <input 
                                 value={formData.basePrice || ''}
                                 onChange={(e) => updateFormData({ basePrice: e.target.value })}
-                                className="w-full pl-8 pr-4 py-4 rounded-full border-2 border-outline-variant focus:border-primary focus:ring-0 bg-surface font-black text-xl outline-none" 
-                                placeholder="0.00" 
+                                className="w-full pl-12 pr-4 py-4 rounded-full border-2 border-outline-variant focus:border-primary focus:ring-0 bg-surface font-black text-xl outline-none" 
+                                placeholder="0" 
                                 type="number"
                             />
                         </div>
@@ -86,7 +86,7 @@ const Step2Pricing = ({ formData, updateFormData, nextStep, prevStep }) => {
                             onChange={e => setNewPackage({...newPackage, name: e.target.value})}
                         />
                         <input 
-                            placeholder="Price ($)" 
+                            placeholder="Price (Rs.)" 
                             type="number"
                             className="bg-white px-4 py-2 rounded-full text-sm outline-none border border-outline-variant focus:border-primary"
                             value={newPackage.price}
@@ -111,7 +111,7 @@ const Step2Pricing = ({ formData, updateFormData, nextStep, prevStep }) => {
                                 {(formData.packages || []).map((pkg, idx) => (
                                     <tr key={idx}>
                                         <td className="px-6 py-4 font-bold text-on-surface">{pkg.name}</td>
-                                        <td className="px-6 py-4 font-black text-primary">${pkg.price}</td>
+                                        <td className="px-6 py-4 font-black text-primary">Rs. {pkg.price}</td>
                                         <td className="px-6 py-4 text-right">
                                             <button onClick={() => removePackage(idx)} className="p-2 text-outline hover:text-error transition-colors">
                                                 <span className="material-symbols-outlined">delete</span>

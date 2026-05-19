@@ -62,7 +62,7 @@ const BookingRow = ({ booking, idx }) => {
                 </span>
             </td>
             <td className="p-5 text-right font-black text-on-surface text-lg tracking-tight">
-                ${booking.amount.toLocaleString()}
+                Rs. {booking.amount.toLocaleString()}
             </td>
             <td className="p-5 text-right">
                 <button className="material-symbols-outlined text-outline group-hover:text-primary transition-all p-2 hover:bg-white rounded-full">

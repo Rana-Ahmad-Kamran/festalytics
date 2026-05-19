@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { db, auth } from "@/firebase";
 import { doc, getDoc, updateDoc, setDoc, arrayUnion, collection, getDocs, addDoc } from "firebase/firestore";
@@ -8,6 +9,7 @@ import BookingStats from '@/components/vendor/bookings/BookingStats';
 import BookingFilters from '@/components/vendor/bookings/BookingFilters';
 
 const BookingsPage = () => {
+    const router = useRouter();
     const [showWalkinForm, setShowWalkinForm] = useState(false);
     const [venueId, setVenueId] = useState("zaydan-banquet-hall");
     const [isLoading, setIsLoading] = useState(true);
@@ -39,22 +41,27 @@ const BookingsPage = () => {
     const [advancePaid, setAdvancePaid] = useState(0);
 
     // Custom Price Overrides (editable for custom discounts)
-    const [customHallRent, setCustomHallRent] = useState(2800);
-    const [customAcCost, setCustomAcCost] = useState(500);
-    const [customGeneratorCost, setCustomGeneratorCost] = useState(350);
-    const [customDecorPrice, setCustomDecorPrice] = useState(1200);
-    const [customSoundPrice, setCustomSoundPrice] = useState(850);
-    const [customSecurityPrice, setCustomSecurityPrice] = useState(400);
+    const [customHallRent, setCustomHallRent] = useState(250000);
+    const [customAcCost, setCustomAcCost] = useState(25000);
+    const [customGeneratorCost, setCustomGeneratorCost] = useState(15000);
+    const [customDecorPrice, setCustomDecorPrice] = useState(120000);
+    const [customSoundPrice, setCustomSoundPrice] = useState(25000);
+    const [customSecurityPrice, setCustomSecurityPrice] = useState(20000);
     const [customPlatePrices, setCustomPlatePrices] = useState({
-        'pkg-1': 45,
-        'pkg-2': 32,
-        'pkg-3': 65
+        'pkg-1': 2850,
+        'pkg-2': 2000,
+        'pkg-3': 4100
     });
+
+    // Interactive details drawer states
+    const [selectedDetailBooking, setSelectedDetailBooking] = useState(null);
+    const [counterOfferAmount, setCounterOfferAmount] = useState("");
+    const [isSubmittingAction, setIsSubmittingAction] = useState(false);
 
     // Receipt details for post-booking success display
     const [createdReceipt, setCreatedReceipt] = useState(null);
 
-    // Mock Backup Bookings (fully styled)
+    // Mock Backup Bookings (fully styled with complete raw breakdown segments)
     const mockBookings = [
         { 
             id: 'BK-9821', 
@@ -64,7 +71,13 @@ const BookingsPage = () => {
             eventDate: '2026-06-24',
             status: 'Confirmed',
             source: 'Online Portal',
-            amount: 14850.00
+            amount: 810000.00,
+            raw: {
+                eventDetails: { guests: 200, category: 'Barat', date: '2026-06-24', timing: 'Evening (7:00 PM - 10:00 PM)' },
+                catering: { packageName: 'Luxury Menu', dishes: ['Mutton Korma', 'Biryani', 'Chicken Tikka', 'Naan', 'Kheer'] },
+                addons: { ac: true, generator: true, decor: true, sound: false },
+                financials: { hallRent: 250000, cateringCost: 400000, utilitiesCost: 40000, addonsCost: 120000, grandTotal: 810000, advancePaid: 100000, remainingBalance: 710000 }
+            }
         },
         { 
             id: 'BK-9818', 
@@ -72,9 +85,15 @@ const BookingsPage = () => {
             service: 'Birthday (Party)',
             bookedDate: 'Oct 10',
             eventDate: '2026-07-15',
-            status: 'Confirmed',
+            status: 'Pending',
             source: 'Online Portal',
-            amount: 4850.00
+            amount: 320000.00,
+            raw: {
+                eventDetails: { guests: 100, category: 'Party', date: '2026-07-15', timing: 'Morning (1:00 PM - 4:00 PM)' },
+                catering: { packageName: 'Standard Menu', dishes: ['Chicken Karahi', 'Egg Fried Rice', 'Manchurian', 'Salad', 'Ice Cream'] },
+                addons: { ac: true, generator: false, decor: false, sound: true },
+                financials: { hallRent: 150000, cateringCost: 140000, utilitiesCost: 15000, addonsCost: 15000, grandTotal: 320000, advancePaid: 50000, remainingBalance: 270000 }
+            }
         },
         { 
             id: 'BK-9805', 
@@ -84,7 +103,13 @@ const BookingsPage = () => {
             eventDate: '2026-05-05',
             status: 'Completed',
             source: 'Walk-in ERP',
-            amount: 18120.00
+            amount: 980000.00,
+            raw: {
+                eventDetails: { guests: 300, category: 'Walima', date: '2026-05-05', timing: 'Evening (7:00 PM - 10:00 PM)' },
+                catering: { packageName: 'Royal Feast Menu', dishes: ['Mutton Pullao', 'Chicken Qorma', 'Seekh Kabab', 'Roghnii Naan', 'Jalebi'] },
+                addons: { ac: true, generator: true, decor: true, sound: true },
+                financials: { hallRent: 300000, cateringCost: 500000, utilitiesCost: 60000, addonsCost: 120000, grandTotal: 980000, advancePaid: 300000, remainingBalance: 680000 }
+            }
         }
     ];
 
@@ -106,16 +131,17 @@ const BookingsPage = () => {
                         const userData = userDocSnap.data();
                         if (userData.venueId) {
                             setVenueId(userData.venueId);
-                        } else if (userData.role === "vendor") {
-                            // Fallback to vendor's uid if no explicit venueId is set
-                            setVenueId(user.uid);
+                        } else {
+                            // Fallback to default zaydan-banquet-hall
+                            setVenueId("zaydan-banquet-hall");
                         }
                     } else {
-                        // Profile missing but authenticated? Fallback to uid
-                        setVenueId(user.uid);
+                        // Fallback to default zaydan-banquet-hall
+                        setVenueId("zaydan-banquet-hall");
                     }
                 } catch (err) {
                     console.error("Error resolving vendor multi-tenant context: ", err);
+                    setVenueId("zaydan-banquet-hall");
                 }
             } else {
                 // If not logged in, we preserve development mode pointing to zaydan-banquet-hall
@@ -149,6 +175,7 @@ const BookingsPage = () => {
                 const b = doc.data();
                 if (b.eventDetails?.venueId === venueId) {
                     list.push({
+                        docId: doc.id,
                         id: b.id,
                         customer: { 
                             name: b.customer?.name || "Client", 
@@ -161,7 +188,8 @@ const BookingsPage = () => {
                         timing: b.eventDetails?.timing || "",
                         status: b.status || "Confirmed",
                         source: b.eventDetails?.source || "Walk-in ERP",
-                        amount: b.financials?.grandTotal || 0
+                        amount: b.financials?.grandTotal || 0,
+                        raw: b
                     });
                 }
             });
@@ -197,20 +225,141 @@ const BookingsPage = () => {
         }
     }, [venueData]);
 
+    // Handle status accept, decline or counter operations
+    const handleBookingAction = async (actionType) => {
+        if (!selectedDetailBooking) return;
+        setIsSubmittingAction(true);
+        
+        try {
+            if (!selectedDetailBooking.docId) {
+                // Preloaded mock database backups can only be simulated locally
+                let simulatedStatus = "";
+                let updatedAmount = selectedDetailBooking.amount;
+                if (actionType === 'accept') simulatedStatus = "Confirmed";
+                else if (actionType === 'decline') simulatedStatus = "Declined";
+                else if (actionType === 'counter') {
+                    simulatedStatus = "Counter Offer";
+                    updatedAmount = parseFloat(counterOfferAmount);
+                }
+
+                // Update standard visual memory state
+                const updatedList = dynamicBookings.map(b => b); // noop
+                // Also update Elena & Marcus Chen state in the current user view
+                triggerToast(`Simulated! Preloaded mock event updated to ${simulatedStatus}!`);
+                setSelectedDetailBooking(prev => ({
+                    ...prev,
+                    status: simulatedStatus,
+                    amount: updatedAmount,
+                    raw: {
+                        ...prev.raw,
+                        financials: {
+                            ...prev.raw?.financials,
+                            grandTotal: updatedAmount,
+                            remainingBalance: updatedAmount
+                        }
+                    }
+                }));
+                return;
+            }
+
+            // Real Firestore transaction operation
+            const bRef = doc(db, "bookings", selectedDetailBooking.docId);
+            
+            if (actionType === 'accept') {
+                // Update booking status to Confirmed
+                await updateDoc(bRef, {
+                    status: 'Confirmed'
+                });
+                
+                // Add eventDate to the venue blockedDates array to lock availability!
+                if (selectedDetailBooking.eventDate) {
+                    const venueRef = doc(db, "venues", venueId);
+                    await updateDoc(venueRef, {
+                        blockedDates: arrayUnion(selectedDetailBooking.eventDate)
+                    });
+                }
+                
+                triggerToast("Booking Proposal Approved & Date Locked Successfully!");
+                setSelectedDetailBooking(prev => ({ ...prev, status: 'Confirmed' }));
+            } 
+            else if (actionType === 'decline') {
+                await updateDoc(bRef, {
+                    status: 'Declined'
+                });
+                triggerToast("Booking Proposal Declined.");
+                setSelectedDetailBooking(prev => ({ ...prev, status: 'Declined' }));
+            } 
+            else if (actionType === 'counter') {
+                const newTotal = parseFloat(counterOfferAmount);
+                await updateDoc(bRef, {
+                    status: 'Counter Offer',
+                    'financials.grandTotal': newTotal,
+                    'financials.remainingBalance': newTotal
+                });
+                triggerToast(`Counter offer of Rs. ${newTotal.toLocaleString()} submitted successfully!`);
+                setSelectedDetailBooking(prev => ({
+                    ...prev,
+                    status: 'Counter Offer',
+                    amount: newTotal,
+                    raw: {
+                        ...prev.raw,
+                        financials: {
+                            ...prev.raw?.financials,
+                            grandTotal: newTotal,
+                            remainingBalance: newTotal
+                        }
+                    }
+                }));
+            }
+
+            // Reload active records list
+            loadData();
+        } catch (err) {
+            console.error("Action error: ", err);
+            triggerToast(`Failed to update proposal: ${err.message}`, "error");
+        } finally {
+            setIsSubmittingAction(false);
+        }
+    };
+
+    // Setup communication thread state memory segment and redirect
+    const handleInitiateChat = () => {
+        if (!selectedDetailBooking) return;
+        
+        const customerName = selectedDetailBooking.customer.name;
+        const customerContact = selectedDetailBooking.customer.email; // email or phone
+        
+        // Save target parameters in localStorage so Chat thread resolves it on render load!
+        localStorage.setItem("activeChatThread", JSON.stringify({
+            name: customerName,
+            contact: customerContact,
+            bookingId: selectedDetailBooking.id,
+            service: selectedDetailBooking.service,
+            date: selectedDetailBooking.eventDate
+        }));
+        
+        triggerToast("Redirecting to messages room thread...");
+        
+        // Use standard routing
+        setTimeout(() => {
+            router.push('/vendor-dashboard/messages');
+        }, 1000);
+    };
+
     // Merge loaded firestore bookings with mock data
     const allBookings = [...dynamicBookings, ...mockBookings];
 
     // Fallback template values
     const pricing = venueData?.pricing || {
-        hallRent: 2800,
-        acCost: 500,
-        generatorCost: 350,
+        hallRent: 250000,
+        acCost: 25000,
+        generatorCost: 15000,
         decorAvailable: true,
-        decorPrice: 1200,
+        decorPrice: 120000,
         soundAvailable: true,
-        soundPrice: 850,
+        soundPrice: 25000,
         securityAvailable: true,
-        securityPrice: 400
+        securityPrice: 20000
     };
 
     const cateringPackages = venueData?.cateringPackages || [
@@ -218,21 +367,21 @@ const BookingsPage = () => {
             id: 'pkg-1',
             name: "Barat Luxury Menu",
             type: "Barat",
-            perPlatePrice: 45,
+            perPlatePrice: 2850,
             dishes: ["Chicken Biryani", "Mutton Qorma", "Raita & Salad", "Assorted Naan", "Shahi Kheer"]
         },
         {
             id: 'pkg-2',
             name: "Mehndi Feast Chicken Menu",
             type: "Chicken",
-            perPlatePrice: 32,
+            perPlatePrice: 2000,
             dishes: ["Chicken Pulao", "Chicken Seekh Kabab", "Fresh Salad", "Mint Raita", "Jalebi"]
         },
         {
             id: 'pkg-3',
             name: "Royal Mutton Walima Menu",
             type: "Mutton",
-            perPlatePrice: 65,
+            perPlatePrice: 4100,
             dishes: ["Mutton Mandi", "Mutton Karahi", "Hummus & Pita", "Special Salad", "Shahi Tukray"]
         }
     ];
@@ -444,11 +593,11 @@ const BookingsPage = () => {
                                 <div className="space-y-2 pb-4 border-b border-slate-100 font-medium text-on-surface-variant">
                                     <div className="flex justify-between">
                                         <span>Base Venue Seating Rent</span>
-                                        <span className="font-bold text-on-surface">${createdReceipt.financials.hallRent.toLocaleString()}</span>
+                                        <span className="font-bold text-on-surface">Rs. {createdReceipt.financials.hallRent.toLocaleString()}</span>
                                     </div>
                                     <div className="flex justify-between">
                                         <span>Catering ({createdReceipt.catering.packageName})</span>
-                                        <span className="font-bold text-on-surface">${createdReceipt.financials.cateringCost.toLocaleString()}</span>
+                                        <span className="font-bold text-on-surface">Rs. {createdReceipt.financials.cateringCost.toLocaleString()}</span>
                                     </div>
                                     <div className="flex justify-between text-xs pl-2 italic">
                                         <span>— {createdReceipt.catering.perPlatePrice} Per Plate × {createdReceipt.eventDetails.guests} Guests</span>
@@ -456,13 +605,13 @@ const BookingsPage = () => {
                                     {createdReceipt.financials.utilitiesCost > 0 && (
                                         <div className="flex justify-between">
                                             <span>Utility charges (AC / Backup Power)</span>
-                                            <span className="font-bold text-on-surface">${createdReceipt.financials.utilitiesCost.toLocaleString()}</span>
+                                            <span className="font-bold text-on-surface">Rs. {createdReceipt.financials.utilitiesCost.toLocaleString()}</span>
                                         </div>
                                     )}
                                     {createdReceipt.financials.addonsCost > 0 && (
                                         <div className="flex justify-between">
                                             <span>Optional Add-ons (Decor, DJ, Security)</span>
-                                            <span className="font-bold text-on-surface">${createdReceipt.financials.addonsCost.toLocaleString()}</span>
+                                            <span className="font-bold text-on-surface">Rs. {createdReceipt.financials.addonsCost.toLocaleString()}</span>
                                         </div>
                                     )}
                                 </div>
@@ -470,15 +619,15 @@ const BookingsPage = () => {
                                 <div className="space-y-2 bg-slate-50 p-4 rounded-2xl border border-slate-100">
                                     <div className="flex justify-between text-on-surface-variant font-bold text-xs uppercase">
                                         <span>Invoice Grand Total</span>
-                                        <span className="text-lg font-black text-primary">${createdReceipt.financials.grandTotal.toLocaleString()}</span>
+                                        <span className="text-lg font-black text-primary">Rs. {createdReceipt.financials.grandTotal.toLocaleString()}</span>
                                     </div>
                                     <div className="flex justify-between text-emerald-600 font-bold text-xs uppercase pt-1.5 border-t border-slate-200">
                                         <span>Advance Deposit Paid</span>
-                                        <span className="font-black">${createdReceipt.financials.advancePaid.toLocaleString()}</span>
+                                        <span className="font-black">Rs. {createdReceipt.financials.advancePaid.toLocaleString()}</span>
                                     </div>
                                     <div className="flex justify-between text-rose-500 font-bold text-xs uppercase pt-1">
                                         <span>Remaining Balance Due</span>
-                                        <span className="font-black text-sm">${createdReceipt.financials.remainingBalance.toLocaleString()}</span>
+                                        <span className="font-black text-sm">Rs. {createdReceipt.financials.remainingBalance.toLocaleString()}</span>
                                     </div>
                                 </div>
                             </div>
@@ -573,6 +722,10 @@ const BookingsPage = () => {
                                                     initial={{ opacity: 0, x: -10 }}
                                                     animate={{ opacity: 1, x: 0 }}
                                                     transition={{ delay: idx * 0.04 }}
+                                                    onClick={() => {
+                                                        setSelectedDetailBooking(booking);
+                                                        setCounterOfferAmount(booking.amount);
+                                                    }}
                                                     className="hover:bg-primary-fixed/5 transition-colors group cursor-pointer"
                                                 >
                                                     <td className="p-5">
@@ -1071,7 +1224,7 @@ const BookingsPage = () => {
                                                 <span className="material-symbols-outlined text-[10px] text-outline opacity-40 group-hover/rent:opacity-100 transition-opacity">edit</span>
                                             </span>
                                             <div className="flex items-center gap-1 bg-slate-50 border border-slate-200/50 focus-within:border-primary/50 focus-within:bg-white rounded-lg px-2 py-0.5 transition-all">
-                                                <span className="text-[10px] font-bold text-outline">$</span>
+                                                <span className="text-[10px] font-bold text-outline">Rs.</span>
                                                 <input 
                                                     type="number"
                                                     min="0"
@@ -1083,7 +1236,7 @@ const BookingsPage = () => {
                                         </div>
                                         <div className="flex justify-between items-center pt-1.5 border-t border-slate-100/50">
                                             <span>Catering ({selectedPkg?.name || "None"})</span>
-                                            <span className="font-bold text-on-surface">${cateringCost.toLocaleString()}</span>
+                                            <span className="font-bold text-on-surface">Rs. {cateringCost.toLocaleString()}</span>
                                         </div>
                                         <div className="text-[10px] pl-2 text-outline font-bold italic flex justify-between items-center gap-2 group/rate">
                                             <span className="flex items-center gap-1">
@@ -1091,7 +1244,7 @@ const BookingsPage = () => {
                                                 <span className="material-symbols-outlined text-[10px] text-outline opacity-40 group-hover/rate:opacity-100 transition-opacity">edit</span>
                                             </span>
                                             <div className="flex items-center gap-0.5 bg-slate-50 border border-slate-200/50 focus-within:border-primary/50 focus-within:bg-white rounded-lg px-1.5 py-0.5 transition-all">
-                                                <span className="text-[9px] font-bold text-outline">$</span>
+                                                <span className="text-[9px] font-bold text-outline">Rs.</span>
                                                 <input 
                                                     type="number"
                                                     min="0"
@@ -1111,33 +1264,33 @@ const BookingsPage = () => {
                                         {utilitiesCost > 0 && (
                                             <div className="flex justify-between">
                                                 <span>Operational Utilities (AC/Generator)</span>
-                                                <span className="font-bold text-on-surface">${utilitiesCost.toLocaleString()}</span>
+                                                <span className="font-bold text-on-surface">Rs. {utilitiesCost.toLocaleString()}</span>
                                             </div>
                                         )}
 
                                         {addonsCost > 0 && (
                                             <div className="flex justify-between">
                                                 <span>Optional Logistics (Add-ons)</span>
-                                                <span className="font-bold text-on-surface">${addonsCost.toLocaleString()}</span>
+                                                <span className="font-bold text-on-surface">Rs. {addonsCost.toLocaleString()}</span>
                                             </div>
                                         )}
 
                                         {/* Tax Rate (0.00% default for now) */}
                                         <div className="flex justify-between pt-1 border-t border-slate-100">
                                             <span>GST Tax / Services (0.00%)</span>
-                                            <span className="font-bold text-on-surface">$0.00</span>
+                                            <span className="font-bold text-on-surface">Rs. 0</span>
                                         </div>
                                     </div>
 
                                     {/* Grand Total banner */}
                                     <div className="bg-primary/5 p-5 rounded-2xl border border-primary-fixed-dim/20 space-y-1">
                                         <p className="text-[10px] font-black uppercase text-outline tracking-widest font-black">Total Invoice Amount</p>
-                                        <h3 className="text-3xl font-black text-primary tracking-tight">${grandTotal.toLocaleString()}</h3>
+                                        <h3 className="text-3xl font-black text-primary tracking-tight">Rs. {grandTotal.toLocaleString()}</h3>
                                     </div>
 
                                     {/* Advance Deposit Section */}
                                     <div className="space-y-2 pt-2 border-t border-slate-100">
-                                        <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest px-1">Advance Payment Received ($)</label>
+                                        <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest px-1">Advance Payment Received (Rs.)</label>
                                         <input 
                                             type="number" 
                                             min="0"
@@ -1152,11 +1305,11 @@ const BookingsPage = () => {
                                     <div className="bg-slate-50 p-4.5 rounded-2xl border border-slate-100 space-y-1.5 text-xs font-bold">
                                         <div className="flex justify-between text-on-surface-variant">
                                             <span>Advance Deposit Paid</span>
-                                            <span className="text-emerald-600">${parseFloat(advancePaid || 0).toLocaleString()}</span>
+                                            <span className="text-emerald-600">Rs. {parseFloat(advancePaid || 0).toLocaleString()}</span>
                                         </div>
                                         <div className="flex justify-between text-rose-500 font-black border-t border-slate-200/60 pt-1.5 uppercase font-black">
                                             <span>Remaining Due Balance</span>
-                                            <span>${remainingBalance.toLocaleString()}</span>
+                                            <span>Rs. {remainingBalance.toLocaleString()}</span>
                                         </div>
                                     </div>
 
@@ -1184,6 +1337,266 @@ const BookingsPage = () => {
                             </div>
                         </form>
                     </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Interactive slide-over drawer for detailed booking ledger & actions */}
+            <AnimatePresence>
+                {selectedDetailBooking && (
+                    <>
+                        {/* Backdrop overlay */}
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 0.5 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setSelectedDetailBooking(null)}
+                            className="fixed inset-0 z-40 bg-black/60 backdrop-blur-xs"
+                        />
+                        {/* Drawer body */}
+                        <motion.div
+                            initial={{ x: "100%" }}
+                            animate={{ x: 0 }}
+                            exit={{ x: "100%" }}
+                            transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                            className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-md bg-white shadow-2xl border-l border-outline-variant flex flex-col h-full text-slate-700 font-sans"
+                        >
+                            {/* Header */}
+                            <div className="bg-gradient-to-r from-primary to-secondary p-6 text-white flex justify-between items-center relative">
+                                <div>
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <span className="text-[9px] font-black uppercase tracking-widest bg-white/20 px-2.5 py-1 rounded-full whitespace-nowrap">
+                                            {selectedDetailBooking.source}
+                                        </span>
+                                        <span className="text-[9px] font-black uppercase tracking-widest bg-white/20 px-2.5 py-1 rounded-full whitespace-nowrap">
+                                            {selectedDetailBooking.id}
+                                        </span>
+                                    </div>
+                                    <h3 className="text-xl font-black tracking-tight mt-1.5">{selectedDetailBooking.customer.name}</h3>
+                                    <p className="text-[10px] opacity-90 font-bold uppercase tracking-widest mt-0.5">{selectedDetailBooking.service} Proposal</p>
+                                </div>
+                                <button
+                                    onClick={() => setSelectedDetailBooking(null)}
+                                    className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center cursor-pointer transition-colors border-0 text-white font-black text-sm"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+
+                            {/* Scrollable details area */}
+                            <div className="flex-1 overflow-y-auto p-6 space-y-6 text-sm">
+                                {/* Status pill banner */}
+                                <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Current Booking Status</span>
+                                    <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border shadow-sm
+                                        ${selectedDetailBooking.status === 'Confirmed' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' : 
+                                          selectedDetailBooking.status === 'Pending' ? 'bg-amber-500/10 text-amber-600 border-amber-500/20' :
+                                          selectedDetailBooking.status === 'Counter Offer' ? 'bg-pink-500/10 text-pink-600 border-pink-500/20' :
+                                          selectedDetailBooking.status === 'Declined' ? 'bg-rose-500/10 text-rose-600 border-rose-500/20' :
+                                          'bg-slate-100 text-slate-700 border-slate-200'}`}>
+                                        {selectedDetailBooking.status}
+                                    </span>
+                                </div>
+
+                                {/* Section: Logistics details */}
+                                <div className="space-y-4">
+                                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b pb-2">Event Specifications</h4>
+                                    
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Scheduled Date</p>
+                                            <p className="font-black text-on-surface mt-0.5 text-xs">{selectedDetailBooking.eventDate || "Not Set"}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Timing Slot</p>
+                                            <p className="font-bold text-on-surface mt-0.5 text-xs">{selectedDetailBooking.timing || "N/A"}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Guest Capacity</p>
+                                            <p className="font-black text-secondary mt-0.5 text-xs">
+                                                {selectedDetailBooking.raw?.eventDetails?.guests || 150} Guests
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Catering Package</p>
+                                            <p className="font-bold text-primary mt-0.5 text-xs">
+                                                {selectedDetailBooking.raw?.catering?.packageName || "Venue Hire Only"}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {selectedDetailBooking.raw?.catering?.dishes && selectedDetailBooking.raw.catering.dishes.length > 0 && (
+                                        <div className="p-3.5 bg-pink-50/30 border border-pink-100/50 rounded-2xl space-y-2 mt-2">
+                                            <span className="text-[8.5px] font-black text-primary uppercase tracking-wider block">Catering dishes chosen:</span>
+                                            <div className="flex flex-wrap gap-1">
+                                                {selectedDetailBooking.raw.catering.dishes.map((dish, i) => (
+                                                    <span key={i} className="text-[8.5px] bg-white text-slate-700 px-2 py-0.5 rounded-full border border-slate-100 font-medium">
+                                                        {dish}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Section: Add-ons & Utilities */}
+                                {selectedDetailBooking.raw?.addons && (
+                                    <div className="space-y-3">
+                                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b pb-2">Add-ons Configured</h4>
+                                        <div className="grid grid-cols-2 gap-2 text-xs">
+                                            <div className="flex items-center gap-2">
+                                                <span className={`material-symbols-outlined text-sm ${selectedDetailBooking.raw.addons.ac ? 'text-green-500' : 'text-slate-300'}`}>
+                                                    {selectedDetailBooking.raw.addons.ac ? 'check_circle' : 'cancel'}
+                                                </span>
+                                                <span className={selectedDetailBooking.raw.addons.ac ? 'font-bold text-slate-700' : 'text-slate-400'}>Air Conditioning (AC)</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <span className={`material-symbols-outlined text-sm ${selectedDetailBooking.raw.addons.generator ? 'text-green-500' : 'text-slate-300'}`}>
+                                                    {selectedDetailBooking.raw.addons.generator ? 'check_circle' : 'cancel'}
+                                                </span>
+                                                <span className={selectedDetailBooking.raw.addons.generator ? 'font-bold text-slate-700' : 'text-slate-400'}>Generator Backup</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <span className={`material-symbols-outlined text-sm ${selectedDetailBooking.raw.addons.decor ? 'text-green-500' : 'text-slate-300'}`}>
+                                                    {selectedDetailBooking.raw.addons.decor ? 'check_circle' : 'cancel'}
+                                                </span>
+                                                <span className={selectedDetailBooking.raw.addons.decor ? 'font-bold text-slate-700' : 'text-slate-400'}>Premium Decor</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <span className={`material-symbols-outlined text-sm ${selectedDetailBooking.raw.addons.sound ? 'text-green-500' : 'text-slate-300'}`}>
+                                                    {selectedDetailBooking.raw.addons.sound ? 'check_circle' : 'cancel'}
+                                                </span>
+                                                <span className={selectedDetailBooking.raw.addons.sound ? 'font-bold text-slate-700' : 'text-slate-400'}>Sound/DJ Systems</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Section: Full Financial Breakdown Ledger */}
+                                {selectedDetailBooking.raw?.financials && (
+                                    <div className="space-y-3 bg-slate-50 p-4.5 rounded-3xl border border-slate-100">
+                                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Financial Breakdown</h4>
+                                        <div className="space-y-2 font-medium text-xs">
+                                            <div className="flex justify-between text-slate-600">
+                                                <span>Venue Seating Rent:</span>
+                                                <span className="font-bold">Rs. {(selectedDetailBooking.raw.financials.hallRent || 0).toLocaleString()}</span>
+                                            </div>
+                                            {(selectedDetailBooking.raw.financials.cateringCost || 0) > 0 && (
+                                                <div className="flex justify-between text-slate-600">
+                                                    <span>Catering Subtotal:</span>
+                                                    <span className="font-bold">Rs. {selectedDetailBooking.raw.financials.cateringCost.toLocaleString()}</span>
+                                                </div>
+                                            )}
+                                            {(selectedDetailBooking.raw.financials.utilitiesCost || 0) > 0 && (
+                                                <div className="flex justify-between text-slate-600">
+                                                    <span>Utilities Setup:</span>
+                                                    <span className="font-bold">Rs. {selectedDetailBooking.raw.financials.utilitiesCost.toLocaleString()}</span>
+                                                </div>
+                                            )}
+                                            {(selectedDetailBooking.raw.financials.addonsCost || 0) > 0 && (
+                                                <div className="flex justify-between text-slate-600">
+                                                    <span>Add-ons / Decor:</span>
+                                                    <span className="font-bold">Rs. {selectedDetailBooking.raw.financials.addonsCost.toLocaleString()}</span>
+                                                </div>
+                                            )}
+                                            <div className="border-t border-slate-200 pt-2 flex justify-between font-black text-sm text-primary uppercase tracking-wide">
+                                                <span>Total Estimation:</span>
+                                                <span>Rs. {selectedDetailBooking.amount.toLocaleString()}</span>
+                                            </div>
+                                            {(selectedDetailBooking.raw.financials.advancePaid || 0) > 0 && (
+                                                <div className="flex justify-between text-emerald-600 font-bold border-t border-slate-200/50 pt-1.5">
+                                                    <span>Advance Deposit Paid:</span>
+                                                    <span>Rs. {selectedDetailBooking.raw.financials.advancePaid.toLocaleString()}</span>
+                                                </div>
+                                            )}
+                                            <div className="flex justify-between text-rose-500 font-bold">
+                                                <span>Remaining Balance:</span>
+                                                <span className="font-black">Rs. {(selectedDetailBooking.raw.financials.remainingBalance || selectedDetailBooking.amount).toLocaleString()}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Client details section */}
+                                <div className="space-y-3 bg-gray-50/50 p-4.5 rounded-3xl border border-gray-100">
+                                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Client Profile & Contact</h4>
+                                    <div className="space-y-1.5 text-xs font-bold text-slate-700">
+                                        <p className="flex items-center gap-2">
+                                            <span className="material-symbols-outlined text-sm text-slate-400">person</span>
+                                            <span>{selectedDetailBooking.customer.name}</span>
+                                        </p>
+                                        <p className="flex items-center gap-2">
+                                            <span className="material-symbols-outlined text-sm text-slate-400">email</span>
+                                            <span className="lowercase">{selectedDetailBooking.customer.email}</span>
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Footer operational buttons actions panel */}
+                            <div className="p-6 border-t border-outline-variant bg-slate-50 space-y-4">
+                                {/* If status is Pending or Counter Offer or Quote Request, show operational flow */}
+                                {(selectedDetailBooking.status === 'Pending' || selectedDetailBooking.status === 'Counter Offer' || selectedDetailBooking.status === 'Quote Request') ? (
+                                    <div className="space-y-3.5">
+                                        {/* Inline Counter Price Form */}
+                                        <div className="bg-white p-4 rounded-2xl border border-outline-variant/60 shadow-sm space-y-3 text-left">
+                                            <label className="text-[9px] font-black text-primary uppercase tracking-widest px-0.5 block">Negotiate Counter Offer Price</label>
+                                            <div className="flex items-center gap-3">
+                                                <div className="relative flex-1">
+                                                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-black text-xs text-outline">Rs.</span>
+                                                    <input 
+                                                        type="number"
+                                                        value={counterOfferAmount}
+                                                        onChange={(e) => setCounterOfferAmount(e.target.value)}
+                                                        placeholder="Counter Quote Total Amount"
+                                                        className="w-full bg-slate-50 border border-gray-200 rounded-xl pl-9 pr-4 py-2.5 text-xs font-black text-gray-800 focus:bg-white focus:ring-1 focus:ring-primary focus:border-primary outline-none transition-all"
+                                                    />
+                                                </div>
+                                                <button
+                                                    onClick={() => handleBookingAction('counter')}
+                                                    disabled={isSubmittingAction || !counterOfferAmount || parseFloat(counterOfferAmount) <= 0}
+                                                    className="bg-secondary hover:bg-secondary/90 text-white px-5 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-wider transition-all disabled:opacity-50 border-0 flex items-center justify-center gap-1 cursor-pointer h-[38px]"
+                                                >
+                                                    Send Counter
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-3">
+                                            <button
+                                                onClick={() => handleBookingAction('decline')}
+                                                disabled={isSubmittingAction}
+                                                className="flex-1 border-2 border-rose-500/25 bg-rose-50 hover:bg-rose-100 text-rose-600 py-3.5 rounded-full font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer border-solid"
+                                            >
+                                                Decline Proposal
+                                            </button>
+                                            <button
+                                                onClick={() => handleBookingAction('accept')}
+                                                disabled={isSubmittingAction}
+                                                className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-500 hover:shadow-lg text-white py-3.5 rounded-full font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer border-0 shadow-sm"
+                                            >
+                                                Accept & Lock Date
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="text-center p-2">
+                                        <p className="text-[10px] text-outline font-black uppercase tracking-wider">
+                                            ✓ Proposal is marked as {selectedDetailBooking.status}
+                                        </p>
+                                    </div>
+                                )}
+
+                                {/* Interactive Chat Redirect Action */}
+                                <button
+                                    onClick={handleInitiateChat}
+                                    className="w-full bg-white hover:bg-slate-100 text-[#D6336C] py-3.5 rounded-full font-black text-[10px] uppercase tracking-widest transition-all border border-pink-200/50 shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
+                                >
+                                    <span className="material-symbols-outlined text-sm font-black">forum</span>
+                                    Initiate Direct Customer Chat
+                                </button>
+                            </div>
+                        </motion.div>
+                    </>
                 )}
             </AnimatePresence>
         </div>

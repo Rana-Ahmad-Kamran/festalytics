@@ -2,7 +2,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 
-const ChatQuickReplies = () => {
+const ChatQuickReplies = ({ onSelectReply }) => {
     const replies = [
         "Thank you for booking!",
         "Unfortunately, we're not available.",
@@ -12,7 +12,7 @@ const ChatQuickReplies = () => {
     ];
 
     return (
-        <aside className="w-72 flex flex-col bg-surface-container-low p-6 gap-6 rounded-3xl border border-outline-variant/50">
+        <aside className="w-72 flex flex-col bg-surface-container-low p-6 gap-6 rounded-3xl border border-outline-variant/50 text-slate-700 font-sans h-full">
             <div className="space-y-6">
                 <div className="flex items-center gap-3">
                     <div className="w-8 h-8 bg-secondary-container rounded-lg flex items-center justify-center text-secondary">
@@ -26,7 +26,8 @@ const ChatQuickReplies = () => {
                         <motion.button 
                             key={idx}
                             whileHover={{ x: 5, backgroundColor: '#ffffff' }}
-                            className="w-full text-left p-4 text-[11px] font-black leading-snug bg-white/50 rounded-2xl border border-outline-variant/30 hover:border-primary hover:text-primary transition-all shadow-sm uppercase tracking-wide"
+                            onClick={() => onSelectReply && onSelectReply(reply)}
+                            className="w-full text-left p-4 text-[11px] font-black leading-snug bg-white/50 rounded-2xl border border-outline-variant/30 hover:border-primary hover:text-primary transition-all shadow-sm uppercase tracking-wide cursor-pointer"
                         >
                             "{reply}"
                         </motion.button>
@@ -35,7 +36,7 @@ const ChatQuickReplies = () => {
             </div>
 
             <div className="mt-auto pt-6 border-t border-outline-variant/30">
-                <button className="w-full flex items-center justify-center gap-2 py-4 px-4 rounded-2xl border-2 border-dashed border-outline text-outline font-black text-[10px] uppercase tracking-widest hover:border-secondary hover:text-secondary hover:bg-white transition-all group">
+                <button className="w-full flex items-center justify-center gap-2 py-4 px-4 rounded-2xl border-2 border-dashed border-outline text-outline font-black text-[10px] uppercase tracking-widest hover:border-secondary hover:text-secondary hover:bg-white transition-all group cursor-pointer bg-transparent">
                     <span className="material-symbols-outlined text-lg group-hover:rotate-90 transition-transform">add</span>
                     Create Template
                 </button>

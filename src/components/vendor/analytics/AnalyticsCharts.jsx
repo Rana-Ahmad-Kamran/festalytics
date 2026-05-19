@@ -28,7 +28,7 @@ export const RevenueTrendChart = () => (
                         className={`w-full ${i === 3 ? 'bg-primary shadow-lg shadow-primary/30' : 'bg-primary-container'} rounded-t-2xl relative group/bar`}
                     >
                         <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-on-surface text-white text-[10px] px-3 py-1.5 rounded-lg opacity-0 group-hover/bar:opacity-100 transition-opacity font-black">
-                            ${(h * 3000).toFixed(0)}
+                            Rs. {(h * 3000).toFixed(0)}
                         </div>
                     </motion.div>
                 ))}

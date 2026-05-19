@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 
 const AnalyticsKPIs = () => {
     const kpis = [
-        { label: 'Total Revenue', value: '$12,450', trend: '+15%', icon: 'payments', color: 'primary', bg: 'primary-fixed', shadow: 'candy-shadow-pink' },
+        { label: 'Total Revenue', value: 'Rs. 12,450', trend: '+15%', icon: 'payments', color: 'primary', bg: 'primary-fixed', shadow: 'candy-shadow-pink' },
         { label: 'Total Bookings', value: '127', trend: '+8', icon: 'calendar_today', color: 'secondary', bg: 'secondary-container' },
         { label: 'Conversion Rate', value: '3.2%', trend: null, icon: 'filter_alt', color: 'tertiary', bg: 'tertiary-fixed' },
         { label: 'Average Rating', value: '4.7/5', trend: '4.7', icon: 'star', color: 'primary', bg: 'surface-container-high', isRating: true },

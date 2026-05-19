@@ -23,16 +23,16 @@ const EditServicePage = () => {
 
     // State for Pricing tiers
     const [pricingPackages, setPricingPackages] = useState([
-        { id: 1, name: "Bronze Package", price: "$2,800", description: "Standard venue hire with basic sound and lighting.", features: ["4 Hours Venue Access", "Basic Setup Assistance", "Standard Lighting"] },
-        { id: 2, name: "Silver Package", price: "$4,500", description: "Perfect for formal receptions and mid-sized banquets.", features: ["6 Hours Venue Access", "Premium Sound & Lights", "Stage Access", "1 Dedicated Assistant"] },
-        { id: 3, name: "Gold Package", price: "$6,800", description: "Our ultimate premium offering with all services included.", features: ["Full Day Access (12h)", "UHD Projectors & Screen", "Valet Parking Access", "2 Dedicated Assistants", "Pre-event Foyer Drinks"] }
+        { id: 1, name: "Bronze Package", price: "Rs. 250,000", description: "Standard venue hire with basic sound and lighting.", features: ["4 Hours Venue Access", "Basic Setup Assistance", "Standard Lighting"] },
+        { id: 2, name: "Silver Package", price: "Rs. 450,000", description: "Perfect for formal receptions and mid-sized banquets.", features: ["6 Hours Venue Access", "Premium Sound & Lights", "Stage Access", "1 Dedicated Assistant"] },
+        { id: 3, name: "Gold Package", price: "Rs. 680,000", description: "Our ultimate premium offering with all services included.", features: ["Full Day Access (12h)", "UHD Projectors & Screen", "Valet Parking Access", "2 Dedicated Assistants", "Pre-event Foyer Drinks"] }
     ]);
 
     // State for Add-ons Menu
     const [addons, setAddons] = useState([
-        { id: 1, name: "Gourmet Catering Service", price: "$45/guest", desc: "Chef-selected menus with premium buffet and open bar options.", icon: "restaurant" },
-        { id: 2, name: "Floral Arrangements & Decor", price: "$1,200", desc: "Whimsical floral design customized to your event theme colors.", icon: "temp_preferences_custom" },
-        { id: 3, name: "State-of-the-Art AV Pack", price: "$850", desc: "Concert-grade speakers, wireless microphones, and dynamic laser lighting.", icon: "volume_up" }
+        { id: 1, name: "Gourmet Catering Service", price: "Rs. 2,850/guest", desc: "Chef-selected menus with premium buffet options.", icon: "restaurant" },
+        { id: 2, name: "Floral Arrangements & Decor", price: "Rs. 120,000", desc: "Floral design customized to your event theme colors.", icon: "temp_preferences_custom" },
+        { id: 3, name: "State-of-the-Art AV Pack", price: "Rs. 25,000", desc: "Concert-grade speakers, wireless microphones, and dynamic laser lighting.", icon: "volume_up" }
     ]);
     const [newAddon, setNewAddon] = useState({ name: '', price: '', desc: '', icon: 'add' });
 
@@ -159,7 +159,7 @@ const EditServicePage = () => {
                             </div>
                             <div className="flex items-center justify-between">
                                 <span className="text-on-surface-variant font-medium">Total Revenue</span>
-                                <span className="font-black text-secondary text-xl">$12,450</span>
+                                <span className="font-black text-secondary text-xl">Rs. 12,450</span>
                             </div>
                             <div className="flex items-center justify-between">
                                 <span className="text-on-surface-variant font-medium">Average Rating</span>
@@ -271,7 +271,7 @@ const EditServicePage = () => {
                                             <div className="w-2.5 h-2.5 rounded-full bg-primary mt-2 shadow-[0_0_8px_rgba(224,64,160,0.4)]"></div>
                                             <div>
                                                 <p className="text-sm font-bold text-on-surface">Pricing Updated</p>
-                                                <p className="text-xs text-outline font-medium mt-0.5">You changed the base price from $2,500 to $2,800 • 2 hours ago</p>
+                                                <p className="text-xs text-outline font-medium mt-0.5">You changed the base price from Rs. 250,000 to Rs. 280,000 • 2 hours ago</p>
                                             </div>
                                         </div>
                                         <div className="flex items-start gap-4">
@@ -439,8 +439,8 @@ const EditServicePage = () => {
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest px-1">Base Price per Event</label>
                                             <div className="relative">
-                                                <span className="absolute left-6 top-1/2 -translate-y-1/2 font-black text-primary">$</span>
-                                                <input type="text" className="w-full bg-surface-container-low border-2 border-transparent rounded-full pl-12 pr-6 py-4 focus:border-primary focus:ring-0 text-on-surface font-black text-lg transition-all" defaultValue="2,800" />
+                                                <span className="absolute left-6 top-1/2 -translate-y-1/2 font-black text-primary">Rs.</span>
+                                                <input type="text" className="w-full bg-surface-container-low border-2 border-transparent rounded-full pl-16 pr-6 py-4 focus:border-primary focus:ring-0 text-on-surface font-black text-lg transition-all" defaultValue="250,000" />
                                             </div>
                                         </div>
                                         <div className="space-y-2">
@@ -536,7 +536,7 @@ const EditServicePage = () => {
                                         />
                                         <input 
                                             type="text" 
-                                            placeholder="Price (e.g. $45/guest or $200)"
+                                            placeholder="Price (e.g. Rs. 2,850/guest or Rs. 20,000)"
                                             value={newAddon.price}
                                             onChange={(e) => setNewAddon({ ...newAddon, price: e.target.value })}
                                             className="bg-white border-2 border-transparent rounded-full px-5 py-3 focus:border-primary focus:ring-0 text-xs font-bold"
@@ -781,7 +781,7 @@ const EditServicePage = () => {
 
                                 <div className="space-y-4">
                                     {[
-                                        { q: "Is catering included in the base venue hire price?", a: "Catering is not included in the base venue rate of $2,800. You can choose to add our Gourmet Catering Service from the 'Menu' tab or work with one of our certified external catering partners." },
+                                        { q: "Is catering included in the base venue hire price?", a: "Catering is not included in the base venue rate of Rs. 250,000. You can choose to add our Gourmet Catering Service from the 'Menu' tab or work with one of our certified external catering partners." },
                                         { q: "What is the venue's cancellation policy?", a: "Cancellations made more than 30 days prior to the event date receive a full refund minus a 10% administrative fee. Cancellations under 30 days are subject to a 50% cancellation fee." },
                                         { q: "Do you have physical parking facilities?", a: "Yes, we have private parking space for up to 150 vehicles. Custom valet services can be added as a sub-service package during setup." }
                                     ].map((faq, idx) => {

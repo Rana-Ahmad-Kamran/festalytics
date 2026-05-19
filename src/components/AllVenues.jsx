@@ -67,11 +67,11 @@ const AllVenues = () => {
         phone_1: dbData.profile?.phone_1 || dbData.phone_1 || hall.phone_1,
         // Sync active state from vendor ERP
         serviceActive: dbData.serviceActive !== false,
-        price_range: dbData.pricing?.hallRent ? `PKR ${dbData.pricing.hallRent * 45} base rent` : hall.price_range,
+        price_range: dbData.pricing?.hallRent ? `PKR ${dbData.pricing.hallRent.toLocaleString()} base rent` : hall.price_range,
         images: images,
-        one_dish_chicken: dbData.cateringPackages?.find(p => p.type?.toLowerCase().includes("chicken"))?.perPlatePrice * 45 || hall.one_dish_chicken,
-        one_dish_beef: dbData.cateringPackages?.find(p => p.type?.toLowerCase().includes("beef"))?.perPlatePrice * 50 || hall.one_dish_beef,
-        one_dish_mutton: dbData.cateringPackages?.find(p => p.type?.toLowerCase().includes("mutton"))?.perPlatePrice * 45 || hall.one_dish_mutton,
+        one_dish_chicken: dbData.cateringPackages?.find(p => p.type?.toLowerCase().includes("chicken"))?.perPlatePrice || hall.one_dish_chicken,
+        one_dish_beef: dbData.cateringPackages?.find(p => p.type?.toLowerCase().includes("beef"))?.perPlatePrice || hall.one_dish_beef,
+        one_dish_mutton: dbData.cateringPackages?.find(p => p.type?.toLowerCase().includes("mutton"))?.perPlatePrice || hall.one_dish_mutton,
         isFromDb: true
       };
     }).filter(hall => hall.serviceActive !== false); // Filter out inactive services!
@@ -94,11 +94,11 @@ const AllVenues = () => {
             area: dbData.profile?.area || "Lahore",
             capacity_sitting: dbData.profile?.capacity?.toString() || "500",
             phone_1: dbData.profile?.phone_1 || "",
-            price_range: dbData.pricing?.hallRent ? `PKR ${dbData.pricing.hallRent * 45} base rent` : "Contact for Pricing",
+            price_range: dbData.pricing?.hallRent ? `PKR ${dbData.pricing.hallRent.toLocaleString()} base rent` : "Contact for Pricing",
             images: dbData.images ? dbData.images.map(img => img.url) : [primaryImg],
-            one_dish_chicken: dbData.cateringPackages?.find(p => p.type?.toLowerCase().includes("chicken"))?.perPlatePrice * 45 || "2000",
-            one_dish_beef: dbData.cateringPackages?.find(p => p.type?.toLowerCase().includes("beef"))?.perPlatePrice * 50 || "2850",
-            one_dish_mutton: dbData.cateringPackages?.find(p => p.type?.toLowerCase().includes("mutton"))?.perPlatePrice * 45 || "4100",
+            one_dish_chicken: dbData.cateringPackages?.find(p => p.type?.toLowerCase().includes("chicken"))?.perPlatePrice || "2000",
+            one_dish_beef: dbData.cateringPackages?.find(p => p.type?.toLowerCase().includes("beef"))?.perPlatePrice || "2850",
+            one_dish_mutton: dbData.cateringPackages?.find(p => p.type?.toLowerCase().includes("mutton"))?.perPlatePrice || "4100",
             isFromDb: true
           });
         }

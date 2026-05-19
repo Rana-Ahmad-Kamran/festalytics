@@ -55,15 +55,19 @@ const MyServices = () => {
 
     // Pricing Tab State: Core Base Operational Rate Card
     const [pricing, setPricing] = useState({
-        hallRent: 2800,
-        acCost: 500,
-        generatorCost: 350,
+        hallRent: 250000,
+        acCost: 25000,
+        generatorCost: 15000,
         decorAvailable: true,
-        decorPrice: 1200,
+        decorPrice: 120000,
         soundAvailable: true,
-        soundPrice: 850,
+        soundPrice: 25000,
         securityAvailable: true,
-        securityPrice: 400
+        securityPrice: 20000,
+        chickenPrice: 1400,
+        beefPrice: 2000,
+        muttonPrice: 3000,
+        mehndiPrice: 1200
     });
 
     // -----------------------------------------------------------------
@@ -119,6 +123,10 @@ const MyServices = () => {
 
     const [editingCatId, setEditingCatId] = useState(null);
     const [editCatName, setEditCatName] = useState("");
+    const [capacity, setCapacity] = useState(500);
+    const [bookedDates, setBookedDates] = useState([5, 12, 13, 20, 26, 27]);
+    const [blackoutDates, setBlackoutDates] = useState([14, 15]);
+    const [cateringPackages, setCateringPackages] = useState([]);
 
     // Helper to display gorgeous custom toast notifications
     const triggerToast = (message, type = "success") => {
@@ -311,16 +319,17 @@ const MyServices = () => {
                         const userData = userDocSnap.data();
                         if (userData.venueId) {
                             setVenueId(userData.venueId);
-                        } else if (userData.role === "vendor") {
-                            // Fallback to vendor's uid if no explicit venueId is set
-                            setVenueId(user.uid);
+                        } else {
+                            // Fallback to default zaydan-banquet-hall
+                            setVenueId("zaydan-banquet-hall");
                         }
                     } else {
-                        // Profile missing but authenticated as vendor? Fallback to uid
-                        setVenueId(user.uid);
+                        // Fallback to default zaydan-banquet-hall
+                        setVenueId("zaydan-banquet-hall");
                     }
                 } catch (err) {
                     console.error("Error resolving vendor multi-tenant context: ", err);
+                    setVenueId("zaydan-banquet-hall");
                 }
             } else {
                 // If not logged in, we preserve development mode pointing to zaydan-banquet-hall
@@ -340,10 +349,14 @@ const MyServices = () => {
                 const docSnap = await getDoc(docRef);
                 if (docSnap.exists()) {
                     const data = docSnap.data();
-                    if (data.pricing) setPricing(data.pricing);
+                    if (data.pricing) setPricing(prev => ({ ...prev, ...data.pricing }));
+                    if (data.cateringPackages) setCateringPackages(data.cateringPackages);
                     if (data.features) setFeatures(data.features);
                     if (data.serviceActive !== undefined) setServiceActive(data.serviceActive);
                     if (data.faqs) setFaqs(data.faqs);
+                    if (data.capacity !== undefined) setCapacity(data.capacity);
+                    if (data.bookedDates) setBookedDates(data.bookedDates);
+                    if (data.blackoutDates) setBlackoutDates(data.blackoutDates);
                     
                     if (data.images) {
                         // Dynamically resolve image folder mapping based on target venue profile
@@ -402,9 +415,39 @@ const MyServices = () => {
             const docRef = doc(db, "venues", venueId);
             
             // Format first package for estimation calculator dropdown
-            const headPrice = categories.length > 0 && categories[0].items.length > 0 
-                ? categories[0].items[0].price 
-                : 45;
+            const packageType = activePackageName.includes("Beef") ? "Beef" : 
+                                activePackageName.includes("Mutton") ? "Mutton" : 
+                                activePackageName.includes("Mehndi") ? "Mehndi" : 
+                                "Chicken";
+            const headPrice = packageType === "Beef" ? (pricing.beefPrice || 2000) :
+                              packageType === "Mutton" ? (pricing.muttonPrice || 3000) :
+                              packageType === "Mehndi" ? (pricing.mehndiPrice || 1200) :
+                              (pricing.chickenPrice || 1400);
+
+            // Sync other packages' pricing with current state per-head pricing
+            const syncCateringPackages = cateringPackages.map(pkg => {
+                const pkgType = pkg.type || "";
+                let syncedPrice = pkg.perPlatePrice;
+                if (pkgType === "Chicken") syncedPrice = pricing.chickenPrice || 1400;
+                else if (pkgType === "Beef") syncedPrice = pricing.beefPrice || 2000;
+                else if (pkgType === "Mutton") syncedPrice = pricing.muttonPrice || 3000;
+                else if (pkgType === "Mehndi") syncedPrice = pricing.mehndiPrice || 1200;
+                return { ...pkg, perPlatePrice: syncedPrice };
+            });
+
+            const activePkg = {
+                id: `pkg-${packageType.toLowerCase()}`,
+                name: activePackageName,
+                type: packageType,
+                perPlatePrice: headPrice,
+                categories: categories, // Persist full customized category structure!
+                dishes: categories.flatMap(c => c.items.filter(it => it.active).map(it => it.name)).slice(0, 8)
+            };
+
+            const updatedPackages = [
+                activePkg,
+                ...syncCateringPackages.filter(p => p.type !== packageType && p.id !== 'pkg-active' && p.id !== activePkg.id)
+            ];
 
             await setDoc(docRef, {
                 pricing,
@@ -413,23 +456,18 @@ const MyServices = () => {
                     status: activePackageStatus,
                     categories: categories
                 },
-                // Flatten to list of packages for the client estimator dropdown
-                cateringPackages: [
-                    {
-                        id: 'pkg-active',
-                        name: activePackageName,
-                        type: activePackageName.includes("Beef") ? "Beef" : activePackageName.includes("Mutton") ? "Mutton" : activePackageName.includes("Mehndi") ? "Mehndi" : "Chicken",
-                        perPlatePrice: headPrice,
-                        dishes: categories.flatMap(c => c.items.filter(it => it.active).map(it => it.name)).slice(0, 8)
-                    }
-                ],
+                cateringPackages: updatedPackages,
                 features,
                 serviceActive,
                 faqs,
                 images,
+                capacity: parseInt(capacity) || 500,
+                bookedDates,
+                blackoutDates,
                 updatedAt: new Date().toISOString()
             }, { merge: true });
             
+            setCateringPackages(updatedPackages);
             triggerToast("Database published successfully!");
         } catch (err) {
             console.error("Firestore Write Failed: ", err);
@@ -449,11 +487,25 @@ const MyServices = () => {
     const loadTemplate = (templateKey) => {
         const t = templates[templateKey];
         if (!t) return;
-        setActivePackageName(t.packageName);
-        setCategories(t.categories);
+        
+        const pkgType = templateKey === 'chicken' ? 'Chicken' :
+                        templateKey === 'beef' ? 'Beef' :
+                        templateKey === 'mutton' ? 'Mutton' :
+                        templateKey === 'mehndi' ? 'Mehndi' : 'Chicken';
+        
+        const existingPkg = cateringPackages.find(p => p.type === pkgType);
+        if (existingPkg && existingPkg.categories && existingPkg.categories.length > 0) {
+            setActivePackageName(existingPkg.name);
+            setCategories(existingPkg.categories);
+            triggerToast(`Loaded customized "${existingPkg.name}" from database.`);
+        } else {
+            setActivePackageName(t.packageName);
+            setCategories(t.categories);
+            triggerToast(`Loaded standard "${t.packageName}" template.`);
+        }
+        
         // Auto expand first category
         setExpandedCategories({ "cat-1": true });
-        triggerToast(`Switched to "${t.packageName}"`);
     };
 
     // Modal Add Category Trigger
@@ -841,7 +893,7 @@ const MyServices = () => {
                                         />
                                     </div>
                                     <div className="space-y-1.5">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Per Plate Price ($)</label>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Per Plate Price (Rs.)</label>
                                         <input 
                                             type="number"
                                             value={modalInputPrice}
@@ -1135,7 +1187,7 @@ const MyServices = () => {
                             </div>
                             <div className="flex items-center justify-between">
                                 <span className="text-on-surface-variant font-medium">Total Revenue</span>
-                                <span className="font-black text-secondary text-xl">$12,450</span>
+                                <span className="font-black text-secondary text-xl">Rs. 12,450</span>
                             </div>
                             <div className="flex items-center justify-between">
                                 <span className="text-on-surface-variant font-medium">Average Rating</span>
@@ -1226,7 +1278,7 @@ const MyServices = () => {
                                         <div className="space-y-3">
                                             <div>
                                                 <label className="text-[10px] font-bold text-outline uppercase tracking-wider">Max Guests</label>
-                                                <p className="font-bold text-secondary text-sm">500 People</p>
+                                                <p className="font-bold text-secondary text-sm">{capacity} People</p>
                                             </div>
                                             <div>
                                                 <label className="text-[10px] font-bold text-outline uppercase tracking-wider">Min Duration</label>
@@ -1548,7 +1600,7 @@ const MyServices = () => {
                                             <span className="material-symbols-outlined text-[16px]">home_work</span> 1. Fixed Base Cost
                                         </h4>
                                         <div className="space-y-2">
-                                            <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest px-1">Hall Rent & Seating Setup Cost ($)</label>
+                                            <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest px-1">Hall Rent & Seating Setup Cost (Rs.)</label>
                                             <input 
                                                 type="number" 
                                                 value={pricing.hallRent}
@@ -1565,7 +1617,7 @@ const MyServices = () => {
                                         </h4>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                             <div className="space-y-2">
-                                                <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest px-1">Air Conditioning (AC) Cost ($)</label>
+                                                <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest px-1">Air Conditioning (AC) Cost (Rs.)</label>
                                                 <input 
                                                     type="number" 
                                                     value={pricing.acCost}
@@ -1574,7 +1626,7 @@ const MyServices = () => {
                                                 />
                                             </div>
                                             <div className="space-y-2">
-                                                <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest px-1">Generator & Power Backup setup ($)</label>
+                                                <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest px-1">Generator & Power Backup setup (Rs.)</label>
                                                 <input 
                                                     type="number" 
                                                     value={pricing.generatorCost}
@@ -1608,7 +1660,7 @@ const MyServices = () => {
                                                 </div>
                                                 {pricing.decorAvailable && (
                                                     <div className="flex items-center gap-2 shrink-0">
-                                                        <span className="text-xs font-bold text-outline">Price ($):</span>
+                                                        <span className="text-xs font-bold text-outline">Price (Rs.):</span>
                                                         <input 
                                                             type="number" 
                                                             value={pricing.decorPrice}
@@ -1635,7 +1687,7 @@ const MyServices = () => {
                                                 </div>
                                                 {pricing.soundAvailable && (
                                                     <div className="flex items-center gap-2 shrink-0">
-                                                        <span className="text-xs font-bold text-outline">Price ($):</span>
+                                                        <span className="text-xs font-bold text-outline">Price (Rs.):</span>
                                                         <input 
                                                             type="number" 
                                                             value={pricing.soundPrice}
@@ -1662,7 +1714,7 @@ const MyServices = () => {
                                                 </div>
                                                 {pricing.securityAvailable && (
                                                     <div className="flex items-center gap-2 shrink-0">
-                                                        <span className="text-xs font-bold text-outline">Price ($):</span>
+                                                        <span className="text-xs font-bold text-outline">Price (Rs.):</span>
                                                         <input 
                                                             type="number" 
                                                             value={pricing.securityPrice}
@@ -1675,6 +1727,67 @@ const MyServices = () => {
 
                                         </div>
                                     </div>
+
+                                    {/* Catering Menu Packages Per-Head Rates */}
+                                    <div className="space-y-4 pt-6 border-t border-outline-variant/20">
+                                        <h4 className="text-xs font-black text-[#D6336C] uppercase tracking-[0.2em] mb-2 flex items-center gap-1">
+                                            <span className="material-symbols-outlined text-[16px]">restaurant_menu</span> 4. Catering Packages Per-Head Rates
+                                        </h4>
+                                        <p className="text-[10px] text-on-surface-variant font-bold opacity-80 mb-4">
+                                            Set the standard per-plate charges for each of the meat types. The client-side cost estimator will fetch these dynamically to calculate wedding budgets.
+                                        </p>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 bg-surface-container-low p-6 rounded-[2rem] border border-outline-variant/30">
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest px-1">Chicken Menu Price (Rs./head)</label>
+                                                <input 
+                                                    type="number" 
+                                                    value={pricing.chickenPrice || 1400}
+                                                    onChange={(e) => setPricing({ ...pricing, chickenPrice: parseFloat(e.target.value) || 0 })}
+                                                    className="w-full bg-white border border-outline-variant/30 rounded-full px-6 py-4 focus:ring-1 focus:ring-primary text-on-surface font-black text-base shadow-sm" 
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest px-1">Beef Menu Price (Rs./head)</label>
+                                                <input 
+                                                    type="number" 
+                                                    value={pricing.beefPrice || 2000}
+                                                    onChange={(e) => setPricing({ ...pricing, beefPrice: parseFloat(e.target.value) || 0 })}
+                                                    className="w-full bg-white border border-outline-variant/30 rounded-full px-6 py-4 focus:ring-1 focus:ring-primary text-on-surface font-black text-base shadow-sm" 
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest px-1">Mutton Menu Price (Rs./head)</label>
+                                                <input 
+                                                    type="number" 
+                                                    value={pricing.muttonPrice || 3000}
+                                                    onChange={(e) => setPricing({ ...pricing, muttonPrice: parseFloat(e.target.value) || 0 })}
+                                                    className="w-full bg-white border border-outline-variant/30 rounded-full px-6 py-4 focus:ring-1 focus:ring-primary text-on-surface font-black text-base shadow-sm" 
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest px-1">Mehndi Menu Price (Rs./head)</label>
+                                                <input 
+                                                    type="number" 
+                                                    value={pricing.mehndiPrice || 1200}
+                                                    onChange={(e) => setPricing({ ...pricing, mehndiPrice: parseFloat(e.target.value) || 0 })}
+                                                    className="w-full bg-white border border-outline-variant/30 rounded-full px-6 py-4 focus:ring-1 focus:ring-primary text-[#D6336C] font-black text-base shadow-sm" 
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Action button inside Pricing Tab */}
+                                    <div className="flex justify-end pt-6 border-t border-outline-variant/10 mt-6">
+                                        <button 
+                                            onClick={handleSaveChanges}
+                                            disabled={isSaving}
+                                            className="px-8 py-3.5 rounded-full text-xs font-black text-white bg-primary hover:bg-primary-dark transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-primary/20"
+                                        >
+                                            <span className="material-symbols-outlined text-sm">cloud_upload</span>
+                                            {isSaving ? "Publishing Rates..." : "Publish Pricing to Database"}
+                                        </button>
+                                    </div>
+
                                 </div>
                             </motion.div>
                         )}
@@ -1887,7 +2000,7 @@ const MyServices = () => {
                                                                     <h4 className="font-black text-on-surface text-base">{cat.name}</h4>
                                                                     <div className="flex gap-2 text-[10px] font-black text-outline uppercase tracking-wider mt-0.5">
                                                                         <span>{activeItems} Items Active</span>
-                                                                        <span>• Subtotal: ${catSubtotal}</span>
+                                                                        <span>• Subtotal: Rs. {catSubtotal}</span>
                                                                     </div>
                                                                 </div>
                                                             )}
@@ -1931,7 +2044,7 @@ const MyServices = () => {
                                                                             <th className="px-4 py-3 w-12 rounded-l-xl">No.</th>
                                                                             <th className="px-4 py-3">Dish Name</th>
                                                                             <th className="px-4 py-3">Ingredients / Description</th>
-                                                                            <th className="px-4 py-3 w-28">Price ($)</th>
+                                                                            <th className="px-4 py-3 w-28">Price (Rs.)</th>
                                                                             <th className="px-4 py-3 w-20 text-center">Status</th>
                                                                             <th className="px-4 py-3 w-28 text-right rounded-r-xl">Actions</th>
                                                                         </tr>
@@ -1978,7 +2091,7 @@ const MyServices = () => {
                                                                                                 className="w-20 bg-white border border-outline rounded-lg px-2.5 py-1.5 font-black text-primary focus:ring-1 focus:ring-primary focus:border-transparent"
                                                                                             />
                                                                                         ) : (
-                                                                                            <span>${item.price}</span>
+                                                                                            <span>Rs. {item.price}</span>
                                                                                         )}
                                                                                     </td>
 
@@ -2050,9 +2163,18 @@ const MyServices = () => {
                                 exit={{ opacity: 0, y: -15 }}
                                 className="bg-white p-8 rounded-3xl border border-outline-variant/30 shadow-sm space-y-8"
                             >
-                                <div>
-                                    <h3 className="text-2xl font-black text-on-surface tracking-tight">Availability Calendar</h3>
-                                    <p className="text-sm font-medium text-on-surface-variant mt-1">Block specific dates or manage blackout windows for Zaydan Banquet Hall.</p>
+                                <div className="flex justify-between items-center flex-wrap gap-4 pb-4 border-b border-outline-variant/20">
+                                    <div>
+                                        <h3 className="text-2xl font-black text-on-surface tracking-tight">Availability Calendar</h3>
+                                        <p className="text-sm font-medium text-on-surface-variant mt-1">Block specific dates or manage blackout windows for Zaydan Banquet Hall.</p>
+                                    </div>
+                                    <button 
+                                        onClick={handleSaveChanges}
+                                        className="px-6 py-3 rounded-full text-xs font-black text-white bg-primary shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
+                                    >
+                                        <span className="material-symbols-outlined text-sm">cloud_upload</span>
+                                        Publish Calendar
+                                    </button>
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -2070,12 +2192,25 @@ const MyServices = () => {
                                         <div className="grid grid-cols-7 gap-2">
                                             {Array.from({ length: 31 }, (_, i) => {
                                                 const day = i + 1;
-                                                const isBooked = [5, 12, 13, 20, 26, 27].includes(day);
-                                                const isBlackout = [14, 15].includes(day);
+                                                const isBooked = bookedDates.includes(day);
+                                                const isBlackout = blackoutDates.includes(day);
                                                 return (
                                                     <div 
                                                         key={day} 
-                                                        className={`h-10 rounded-xl flex items-center justify-center text-xs font-black cursor-pointer transition-all ${
+                                                        onClick={() => {
+                                                            if (bookedDates.includes(day)) {
+                                                                setBookedDates(bookedDates.filter(d => d !== day));
+                                                                setBlackoutDates([...blackoutDates, day]);
+                                                                triggerToast(`Day ${day} is now a Blackout date.`, "info");
+                                                            } else if (blackoutDates.includes(day)) {
+                                                                setBlackoutDates(blackoutDates.filter(d => d !== day));
+                                                                triggerToast(`Day ${day} is now Available.`, "success");
+                                                            } else {
+                                                                setBookedDates([...bookedDates, day]);
+                                                                triggerToast(`Day ${day} is now Booked.`, "success");
+                                                            }
+                                                        }}
+                                                        className={`h-10 rounded-xl flex items-center justify-center text-xs font-black cursor-pointer transition-all select-none hover:scale-105 active:scale-95 ${
                                                             isBooked ? 'bg-primary text-white shadow-md' :
                                                             isBlackout ? 'bg-secondary text-white' :
                                                             'bg-white text-on-surface hover:bg-primary-fixed hover:text-primary'
@@ -2318,7 +2453,7 @@ const MyServices = () => {
                         <div className="h-10 w-px bg-outline-variant/40"></div>
                         <div className="flex flex-col">
                             <span className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest mb-1">Estimated Setup Value</span>
-                            <span className="text-xl font-black text-primary">${estimatedTotalMenuCost.toLocaleString()}</span>
+                            <span className="text-xl font-black text-primary">Rs. {estimatedTotalMenuCost.toLocaleString()}</span>
                         </div>
                     </div>
                     <div className="flex gap-4">

@@ -52,14 +52,14 @@ const Step4Review = ({ formData, prevStep, publishService }) => {
                                 <p className="font-bold text-on-surface">Base Pricing</p>
                                 <p className="text-xs text-on-surface-variant">{formData.pricingType}</p>
                             </div>
-                            <p className="text-2xl font-black text-primary">${formData.basePrice || '0'}</p>
+                            <p className="text-2xl font-black text-primary">Rs. {formData.basePrice || '0'}</p>
                         </div>
                         {(formData.packages || []).map((pkg, idx) => (
                             <div key={idx} className="flex items-center justify-between p-4 bg-surface-container-low rounded-xl">
                                 <div>
                                     <p className="font-bold text-on-surface">{pkg.name}</p>
                                 </div>
-                                <p className="text-2xl font-black text-primary">${pkg.price}</p>
+                                <p className="text-2xl font-black text-primary">Rs. {pkg.price}</p>
                             </div>
                         ))}
                     </div>
@@ -79,7 +79,7 @@ const Step4Review = ({ formData, prevStep, publishService }) => {
                         <div className="p-5">
                             <div className="flex justify-between items-start mb-2">
                                 <h4 className="text-lg font-black text-on-surface">{formData.name || 'Untitled Service'}</h4>
-                                <span className="text-primary font-black text-xl">${formData.basePrice || '0'}+</span>
+                                <span className="text-primary font-black text-xl">Rs. {formData.basePrice || '0'}+</span>
                             </div>
                             <div className="flex items-center gap-2 mb-6">
                                 <span className="material-symbols-outlined text-tertiary text-sm">location_on</span>
