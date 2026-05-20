@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { db, auth } from "@/firebase";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
+import VenueCalendarWorkspace from "@/components/vendor/availability/VenueCalendarWorkspace";
 
 const MyServices = () => {
     const [activeTab, setActiveTab] = useState('Overview');
@@ -124,8 +125,6 @@ const MyServices = () => {
     const [editingCatId, setEditingCatId] = useState(null);
     const [editCatName, setEditCatName] = useState("");
     const [capacity, setCapacity] = useState(500);
-    const [bookedDates, setBookedDates] = useState([5, 12, 13, 20, 26, 27]);
-    const [blackoutDates, setBlackoutDates] = useState([14, 15]);
     const [cateringPackages, setCateringPackages] = useState([]);
 
     // Helper to display gorgeous custom toast notifications
@@ -355,9 +354,6 @@ const MyServices = () => {
                     if (data.serviceActive !== undefined) setServiceActive(data.serviceActive);
                     if (data.faqs) setFaqs(data.faqs);
                     if (data.capacity !== undefined) setCapacity(data.capacity);
-                    if (data.bookedDates) setBookedDates(data.bookedDates);
-                    if (data.blackoutDates) setBlackoutDates(data.blackoutDates);
-                    
                     if (data.images) {
                         // Dynamically resolve image folder mapping based on target venue profile
                         const isZaydan = venueId === "zaydan-banquet-hall";
@@ -462,8 +458,6 @@ const MyServices = () => {
                 faqs,
                 images,
                 capacity: parseInt(capacity) || 500,
-                bookedDates,
-                blackoutDates,
                 updatedAt: new Date().toISOString()
             }, { merge: true });
             
@@ -2154,91 +2148,19 @@ const MyServices = () => {
                             </motion.div>
                         )}
 
-                        {/* Tab 6: Calendar */}
+                        {/* Tab 6: Calendar — synced with /vendor-dashboard/availability */}
                         {activeTab === 'Calendar' && (
                             <motion.div
                                 key="Calendar"
                                 initial={{ opacity: 0, y: 15 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 exit={{ opacity: 0, y: -15 }}
-                                className="bg-white p-8 rounded-3xl border border-outline-variant/30 shadow-sm space-y-8"
+                                className="bg-white p-6 md:p-8 rounded-3xl border border-outline-variant/30 shadow-sm"
                             >
-                                <div className="flex justify-between items-center flex-wrap gap-4 pb-4 border-b border-outline-variant/20">
-                                    <div>
-                                        <h3 className="text-2xl font-black text-on-surface tracking-tight">Availability Calendar</h3>
-                                        <p className="text-sm font-medium text-on-surface-variant mt-1">Block specific dates or manage blackout windows for Zaydan Banquet Hall.</p>
-                                    </div>
-                                    <button 
-                                        onClick={handleSaveChanges}
-                                        className="px-6 py-3 rounded-full text-xs font-black text-white bg-primary shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
-                                    >
-                                        <span className="material-symbols-outlined text-sm">cloud_upload</span>
-                                        Publish Calendar
-                                    </button>
-                                </div>
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                    <div className="bg-surface-container-low p-6 rounded-3xl border border-outline-variant/20 shadow-sm">
-                                        <div className="flex justify-between items-center mb-6">
-                                            <h4 className="font-black text-on-surface text-sm uppercase tracking-wider">October 2024</h4>
-                                            <div className="flex gap-2">
-                                                <button className="w-8 h-8 rounded-full bg-white hover:bg-surface-variant transition-colors flex items-center justify-center"><span className="material-symbols-outlined text-lg">chevron_left</span></button>
-                                                <button className="w-8 h-8 rounded-full bg-white hover:bg-surface-variant transition-colors flex items-center justify-center"><span className="material-symbols-outlined text-lg">chevron_right</span></button>
-                                            </div>
-                                        </div>
-                                        <div className="grid grid-cols-7 gap-2 text-center text-xs font-bold text-outline uppercase mb-2">
-                                            <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
-                                        </div>
-                                        <div className="grid grid-cols-7 gap-2">
-                                            {Array.from({ length: 31 }, (_, i) => {
-                                                const day = i + 1;
-                                                const isBooked = bookedDates.includes(day);
-                                                const isBlackout = blackoutDates.includes(day);
-                                                return (
-                                                    <div 
-                                                        key={day} 
-                                                        onClick={() => {
-                                                            if (bookedDates.includes(day)) {
-                                                                setBookedDates(bookedDates.filter(d => d !== day));
-                                                                setBlackoutDates([...blackoutDates, day]);
-                                                                triggerToast(`Day ${day} is now a Blackout date.`, "info");
-                                                            } else if (blackoutDates.includes(day)) {
-                                                                setBlackoutDates(blackoutDates.filter(d => d !== day));
-                                                                triggerToast(`Day ${day} is now Available.`, "success");
-                                                            } else {
-                                                                setBookedDates([...bookedDates, day]);
-                                                                triggerToast(`Day ${day} is now Booked.`, "success");
-                                                            }
-                                                        }}
-                                                        className={`h-10 rounded-xl flex items-center justify-center text-xs font-black cursor-pointer transition-all select-none hover:scale-105 active:scale-95 ${
-                                                            isBooked ? 'bg-primary text-white shadow-md' :
-                                                            isBlackout ? 'bg-secondary text-white' :
-                                                            'bg-white text-on-surface hover:bg-primary-fixed hover:text-primary'
-                                                        }`}
-                                                    >
-                                                        {day}
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-6 flex flex-col justify-between">
-                                        <div className="space-y-4">
-                                            <h4 className="text-[10px] font-black text-secondary uppercase tracking-[0.2em]">Calendar Legend</h4>
-                                            <div className="space-y-2">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-5 h-5 rounded-lg bg-primary"></div>
-                                                    <span className="text-xs font-bold text-on-surface">Booked Event Slot (Fully Blocked)</span>
-                                                </div>
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-5 h-5 rounded-lg bg-secondary"></div>
-                                                    <span className="text-xs font-bold text-on-surface">Blocked by Vendor (Blackout Date)</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
+                                <VenueCalendarWorkspace
+                                    variant="embedded"
+                                    publishLabel="Publish Calendar"
+                                />
                             </motion.div>
                         )}
 

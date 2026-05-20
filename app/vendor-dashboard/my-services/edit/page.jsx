@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
+import VenueCalendarWorkspace from '@/components/vendor/availability/VenueCalendarWorkspace';
 
 const EditServicePage = () => {
     const [activeTab, setActiveTab] = useState('Overview');
@@ -571,83 +572,16 @@ const EditServicePage = () => {
                             </motion.div>
                         )}
 
-                        {/* Tab 6: Calendar */}
+                        {/* Tab 6: Calendar — synced with Availability page */}
                         {activeTab === 'Calendar' && (
                             <motion.div
                                 key="Calendar"
                                 initial={{ opacity: 0, y: 15 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 exit={{ opacity: 0, y: -15 }}
-                                className="bg-white p-8 rounded-3xl border border-outline-variant/30 shadow-sm space-y-8"
+                                className="bg-white p-6 md:p-8 rounded-3xl border border-outline-variant/30 shadow-sm"
                             >
-                                <div>
-                                    <h3 className="text-2xl font-black text-on-surface tracking-tight">Availability Calendar</h3>
-                                    <p className="text-sm font-medium text-on-surface-variant mt-1">Block specific dates or manage blackout windows for Zaydan Banquet Hall.</p>
-                                </div>
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                    {/* Monthly mini-calendar */}
-                                    <div className="bg-surface-container-low p-6 rounded-3xl border border-outline-variant/20 shadow-sm">
-                                        <div className="flex justify-between items-center mb-6">
-                                            <h4 className="font-black text-on-surface text-sm uppercase tracking-wider">October 2024</h4>
-                                            <div className="flex gap-2">
-                                                <button className="w-8 h-8 rounded-full bg-white hover:bg-surface-variant transition-colors flex items-center justify-center"><span className="material-symbols-outlined text-lg">chevron_left</span></button>
-                                                <button className="w-8 h-8 rounded-full bg-white hover:bg-surface-variant transition-colors flex items-center justify-center"><span className="material-symbols-outlined text-lg">chevron_right</span></button>
-                                            </div>
-                                        </div>
-                                        <div className="grid grid-cols-7 gap-2 text-center text-xs font-bold text-outline uppercase mb-2">
-                                            <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
-                                        </div>
-                                        <div className="grid grid-cols-7 gap-2">
-                                            {Array.from({ length: 31 }, (_, i) => {
-                                                const day = i + 1;
-                                                const isBooked = [5, 12, 13, 20, 26, 27].includes(day);
-                                                const isBlackout = [14, 15].includes(day);
-                                                return (
-                                                    <div 
-                                                        key={day} 
-                                                        className={`h-10 rounded-xl flex items-center justify-center text-xs font-black cursor-pointer transition-all ${
-                                                            isBooked ? 'bg-primary text-white shadow-md' :
-                                                            isBlackout ? 'bg-secondary text-white' :
-                                                            'bg-white text-on-surface hover:bg-primary-fixed hover:text-primary'
-                                                        }`}
-                                                    >
-                                                        {day}
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-
-                                    {/* Availability Settings panel */}
-                                    <div className="space-y-6 flex flex-col justify-between">
-                                        <div className="space-y-4">
-                                            <h4 className="text-[10px] font-black text-secondary uppercase tracking-[0.2em]">Calendar Legend</h4>
-                                            <div className="space-y-2">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-5 h-5 rounded-lg bg-primary"></div>
-                                                    <span className="text-xs font-bold text-on-surface">Booked Event Slot (Fully Blocked)</span>
-                                                </div>
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-5 h-5 rounded-lg bg-secondary"></div>
-                                                    <span className="text-xs font-bold text-on-surface">Blocked by Vendor (Blackout Date)</span>
-                                                </div>
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-5 h-5 rounded-lg bg-white border border-outline-variant/30"></div>
-                                                    <span className="text-xs font-bold text-on-surface">Available for Bookings</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="p-6 bg-tertiary-fixed/30 rounded-3xl border border-tertiary/10">
-                                            <div className="flex gap-4">
-                                                <span className="material-symbols-outlined text-tertiary text-2xl fill-1">info</span>
-                                                <p className="text-[11px] font-bold text-on-tertiary-fixed-variant leading-relaxed">
-                                                    Clients cannot book slots within 14 days of the event date by default (lead-time block). To change this, update your Lead Time in the description settings.
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
+                                <VenueCalendarWorkspace variant="embedded" publishLabel="Publish Calendar" />
                             </motion.div>
                         )}
 

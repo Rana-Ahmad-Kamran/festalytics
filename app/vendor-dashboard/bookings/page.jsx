@@ -3,10 +3,35 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { db, auth } from "@/firebase";
-import { doc, getDoc, updateDoc, setDoc, arrayUnion, collection, getDocs, addDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc, arrayUnion, collection, getDocs, query, where } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import BookingStats from '@/components/vendor/bookings/BookingStats';
 import BookingFilters from '@/components/vendor/bookings/BookingFilters';
+import {
+    listenToIncomingQuotations,
+    mapQuotationToBookingRow,
+} from "@/lib/firestore/quotations";
+import {
+    submitWalkInBooking,
+    listenToVenueBookings,
+    fetchLegacyVenueBookings,
+} from "@/lib/firestore/bookings";
+import {
+    appendZaydanCallingRow,
+    bookingToCallingRow,
+    syncAllZaydanToCallingSheet,
+    ZAYDAN_VENUE_SLUG,
+} from "@/lib/google/zaydanCallingSheet";
+
+function mergeBookingRows(...lists) {
+    const byKey = new Map();
+    for (const list of lists) {
+        for (const row of list) {
+            byKey.set(row.docId || row.id, row);
+        }
+    }
+    return Array.from(byKey.values());
+}
 
 const BookingsPage = () => {
     const router = useRouter();
@@ -15,7 +40,10 @@ const BookingsPage = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [toast, setToast] = useState({ show: false, message: "", type: "success" });
-    const [dynamicBookings, setDynamicBookings] = useState([]);
+    const [sheetBookings, setSheetBookings] = useState([]);
+    const [firestoreBookings, setFirestoreBookings] = useState([]);
+    const [legacyBookings, setLegacyBookings] = useState([]);
+    const [quotationBookings, setQuotationBookings] = useState([]);
     
     // Firestore Venue settings state
     const [venueData, setVenueData] = useState(null);
@@ -167,33 +195,39 @@ const BookingsPage = () => {
                 }
             }
 
-            // 2. Fetch all walk-in and online bookings from bookings collection
-            const bookingsRef = collection(db, "bookings");
-            const bookingsSnap = await getDocs(bookingsRef);
-            const list = [];
-            bookingsSnap.forEach((doc) => {
-                const b = doc.data();
-                if (b.eventDetails?.venueId === venueId) {
-                    list.push({
-                        docId: doc.id,
-                        id: b.id,
-                        customer: { 
-                            name: b.customer?.name || "Client", 
-                            email: b.customer?.contact || "No Email",
-                            avatar: null 
-                        },
-                        service: b.eventDetails?.category || "Wedding Event",
-                        bookedDate: b.bookedDate || "Today",
-                        eventDate: b.eventDetails?.date || "",
-                        timing: b.eventDetails?.timing || "",
-                        status: b.status || "Confirmed",
-                        source: b.eventDetails?.source || "Walk-in ERP",
-                        amount: b.financials?.grandTotal || 0,
-                        raw: b
+            // 2. Optional: merge Google Sheets bookings (Firestore is the source of truth for walk-ins)
+            let list = [];
+            try {
+                const response = await fetch("/api/sync-bookings");
+                const resData = await response.json();
+                if (resData.success && resData.bookings) {
+                    resData.bookings.forEach((b) => {
+                        const bookingVenueId = b.targetVenueId || b.eventDetails?.venueId;
+                        if (bookingVenueId === venueId) {
+                            list.push({
+                                docId: b.id,
+                                id: b.id,
+                                customer: { 
+                                    name: b.customer?.name || "Client", 
+                                    email: b.customer?.contact || "No Email",
+                                    avatar: null 
+                                },
+                                service: b.eventDetails?.category || "Wedding Event",
+                                bookedDate: b.bookedDate || "Today",
+                                eventDate: b.eventDetails?.date || "",
+                                timing: b.eventDetails?.timing || "",
+                                status: b.status || "Pending",
+                                source: b.bookingSource === "walk-in" ? "Walk-in ERP" : (b.bookingSource || b.eventDetails?.source || "online"),
+                                amount: b.financials?.grandTotal || 0,
+                                raw: b
+                            });
+                        }
                     });
                 }
-            });
-            setDynamicBookings(list.reverse()); // Show newest bookings first
+            } catch (apiErr) {
+                console.warn("Could not load bookings from Google Sheets:", apiErr);
+            }
+            setSheetBookings(list.reverse());
         } catch (err) {
             console.error("Error pulling database profiles: ", err);
         } finally {
@@ -201,8 +235,133 @@ const BookingsPage = () => {
         }
     };
 
+    const [isMigrating, setIsMigrating] = useState(false);
+    const [isSyncingZaydanSheet, setIsSyncingZaydanSheet] = useState(false);
+
+    const handleSyncZaydanCallingSheet = async () => {
+        if (venueId !== ZAYDAN_VENUE_SLUG) {
+            triggerToast("Zaydan calling sheet sync is only for Zaydan Banquet Hall.", "error");
+            return;
+        }
+
+        setIsSyncingZaydanSheet(true);
+        triggerToast("Syncing all Zaydan records to calling sheet...", "success");
+
+        try {
+            const quotationsSnap = await getDocs(
+                query(collection(db, "quotations"), where("targetVenueId", "==", ZAYDAN_VENUE_SLUG))
+            );
+            const quotations = quotationsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+            const bookingsSnap = await getDocs(
+                query(collection(db, "bookings"), where("targetVenueId", "==", ZAYDAN_VENUE_SLUG))
+            );
+            const bookings = bookingsSnap.docs.map((d) => ({
+                docId: d.id,
+                raw: d.data(),
+                ...d.data(),
+            }));
+
+            const legacy = await fetchLegacyVenueBookings(ZAYDAN_VENUE_SLUG);
+            const legacyPayload = legacy.map((row) => row.raw || row);
+
+            await syncAllZaydanToCallingSheet({
+                quotations,
+                bookings: [...bookings, ...legacyPayload],
+            });
+
+            triggerToast("Zaydan_booking_calling_sheet updated with all bookings & quotations!", "success");
+        } catch (err) {
+            console.error("Zaydan calling sheet sync error:", err);
+            triggerToast(`Zaydan sheet sync failed: ${err.message}`, "error");
+        } finally {
+            setIsSyncingZaydanSheet(false);
+        }
+    };
+
+    const handleSyncToSheets = async () => {
+        setIsMigrating(true);
+        triggerToast("Starting Firestore to Google Sheets migration...", "success");
+        try {
+            const bookingsRef = collection(db, "bookings");
+            const bookingsSnap = await getDocs(bookingsRef);
+            const list = [];
+            bookingsSnap.forEach((doc) => {
+                const b = doc.data();
+                list.push({
+                    id: b.id || doc.id,
+                    customer: b.customer,
+                    eventDetails: b.eventDetails,
+                    catering: b.catering,
+                    financials: b.financials,
+                    bookingSource: b.bookingSource || b.eventDetails?.source || "online",
+                    status: b.status || "Pending"
+                });
+            });
+
+            const res = await fetch("/api/sync-bookings", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    bookings: list,
+                    isMigration: true
+                })
+            });
+
+            const resData = await res.json();
+            if (resData.success) {
+                triggerToast("Migration complete! All bookings saved to Google Sheets.", "success");
+                loadData();
+            } else {
+                throw new Error(resData.error || "Unknown API error");
+            }
+        } catch (err) {
+            console.error("Migration error: ", err);
+            triggerToast(`Migration failed: ${err.message}`, "error");
+        } finally {
+            setIsMigrating(false);
+        }
+    };
+
     useEffect(() => {
         loadData();
+    }, [venueId]);
+
+    useEffect(() => {
+        const unsubscribeQuotations = listenToIncomingQuotations(
+            venueId,
+            (quotations) => {
+                setQuotationBookings(quotations.map(mapQuotationToBookingRow));
+            },
+            (error) => {
+                console.error("Incoming quotations listener error:", error);
+                triggerToast(`Could not load quotations: ${error.message}`, "error");
+            }
+        );
+
+        const unsubscribeBookings = listenToVenueBookings(
+            venueId,
+            (bookings) => {
+                setFirestoreBookings(bookings);
+            },
+            (error) => {
+                console.error("Venue bookings listener error:", error);
+                triggerToast(`Could not load bookings: ${error.message}`, "error");
+            }
+        );
+
+        fetchLegacyVenueBookings(venueId)
+            .then(setLegacyBookings)
+            .catch((error) => {
+                console.error("Legacy bookings load error:", error);
+            });
+
+        return () => {
+            unsubscribeQuotations();
+            unsubscribeBookings();
+        };
     }, [venueId]);
 
     useEffect(() => {
@@ -243,7 +402,7 @@ const BookingsPage = () => {
                 }
 
                 // Update standard visual memory state
-                const updatedList = dynamicBookings.map(b => b); // noop
+                firestoreBookings.map((b) => b); // noop — mock rows only
                 // Also update Elena & Marcus Chen state in the current user view
                 triggerToast(`Simulated! Preloaded mock event updated to ${simulatedStatus}!`);
                 setSelectedDetailBooking(prev => ({
@@ -312,8 +471,8 @@ const BookingsPage = () => {
                 }));
             }
 
-            // Reload active records list
-            loadData();
+            // Sync the updated statuses to Google Sheets and reload
+            await handleSyncToSheets();
         } catch (err) {
             console.error("Action error: ", err);
             triggerToast(`Failed to update proposal: ${err.message}`, "error");
@@ -346,8 +505,10 @@ const BookingsPage = () => {
         }, 1000);
     };
 
-    // Merge loaded firestore bookings with mock data
-    const allBookings = [...dynamicBookings, ...mockBookings];
+    const venueBookings = mergeBookingRows(firestoreBookings, legacyBookings, sheetBookings);
+
+    // Merge live quotations (newest first), Firestore walk-ins, sheets, then mock data
+    const allBookings = [...quotationBookings, ...venueBookings, ...mockBookings];
 
     // Fallback template values
     const pricing = venueData?.pricing || {
@@ -428,6 +589,7 @@ const BookingsPage = () => {
 
         const bookingPayload = {
             id: bookingId,
+            targetVenueId: venueId,
             customer: {
                 name: fullName,
                 contact: contactNumber,
@@ -468,22 +630,49 @@ const BookingsPage = () => {
                 remainingBalance: remainingBalance
             },
             status: 'Confirmed',
+            bookingSource: 'walk-in',
             bookedDate: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
         };
 
         try {
-            // 1. Add walk-in booking document to Firestore bookings collection
-            const bookingsRef = collection(db, "bookings");
-            await addDoc(bookingsRef, bookingPayload);
+            // 1. Persist walk-in booking to Firestore `bookings` with venue slug binding
+            const { bookingDocId } = await submitWalkInBooking(venueId, bookingPayload);
 
-            // 2. Lock Date Availability inside the venue profile dynamically
+            if (venueId === ZAYDAN_VENUE_SLUG) {
+                try {
+                    await appendZaydanCallingRow(
+                        bookingToCallingRow(bookingPayload, bookingDocId),
+                        venueId
+                    );
+                } catch (sheetErr) {
+                    console.warn("Zaydan calling sheet append failed:", sheetErr);
+                }
+            }
+
+            // 2. Add walk-in booking to Google Sheets (legacy)
+            try {
+                await fetch("/api/sync-bookings", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        bookings: [bookingPayload],
+                        isMigration: false
+                    })
+                });
+            } catch (sheetErr) {
+                console.warn("Could not save new booking to Google Sheets:", sheetErr);
+            }
+
+            // 3. Lock Date Availability inside the venue profile dynamically
             const venueRef = doc(db, "venues", venueId);
             await updateDoc(venueRef, {
                 blockedDates: arrayUnion(eventDate)
             });
 
             // Set receipt details for final receipt modal
-            setCreatedReceipt(bookingPayload);
+            setCreatedReceipt({ ...bookingPayload, firestoreDocId: bookingDocId });
             triggerToast("Walk-in Booking Registered & Date Locked Successfully!");
             
             // Reset input values
@@ -499,7 +688,7 @@ const BookingsPage = () => {
             setIncludeSound(false);
             setIncludeSecurity(false);
 
-            // Reload dynamic bookings list
+            // Refresh venue profile (blocked dates); bookings table updates via real-time listener
             loadData();
         } catch (err) {
             console.error("Error saving booking: ", err);
@@ -672,7 +861,30 @@ const BookingsPage = () => {
                                 <h2 className="text-5xl font-black text-on-surface tracking-tighter">Bookings Panel</h2>
                             </div>
                             
-                            <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-4 flex-wrap justify-end">
+                                {venueId === ZAYDAN_VENUE_SLUG && (
+                                    <motion.button
+                                        onClick={handleSyncZaydanCallingSheet}
+                                        disabled={isSyncingZaydanSheet}
+                                        whileHover={{ scale: 1.05 }}
+                                        whileTap={{ scale: 0.95 }}
+                                        className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-8 py-4.5 rounded-[2rem] font-black text-xs tracking-widest uppercase flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                                    >
+                                        <span className="material-symbols-outlined text-sm">call</span>
+                                        {isSyncingZaydanSheet ? "Syncing..." : "Sync Zaydan Calling Sheet"}
+                                    </motion.button>
+                                )}
+                                <motion.button 
+                                    onClick={handleSyncToSheets}
+                                    disabled={isMigrating}
+                                    whileHover={{ scale: 1.05 }}
+                                    whileTap={{ scale: 0.95 }}
+                                    className="bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 px-8 py-4.5 rounded-[2rem] font-black text-xs tracking-widest uppercase flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                                >
+                                    <span className="material-symbols-outlined text-sm">sync</span>
+                                    {isMigrating ? "Syncing..." : "Sync Database to Sheets"}
+                                </motion.button>
+
                                 <motion.button 
                                     onClick={() => setShowWalkinForm(true)}
                                     whileHover={{ scale: 1.05, shadow: '0 20px 25px -5px rgb(224 64 160 / 0.3)' }}
@@ -709,11 +921,17 @@ const BookingsPage = () => {
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-outline-variant/30 text-slate-700">
-                                            {isLoading ? (
+                                            {isLoading && allBookings.length === 0 ? (
                                                 <tr>
                                                     <td colSpan="8" className="p-12 text-center text-outline font-bold uppercase tracking-widest text-xs">
                                                         <span className="animate-spin inline-block w-6 h-6 border-4 border-primary border-t-transparent rounded-full mr-3 align-middle"></span>
                                                         Loading physical bookings ledger...
+                                                    </td>
+                                                </tr>
+                                            ) : allBookings.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan="8" className="p-12 text-center text-outline font-bold uppercase tracking-widest text-xs">
+                                                        No bookings or quotation requests yet.
                                                     </td>
                                                 </tr>
                                             ) : allBookings.map((booking, idx) => (
@@ -772,12 +990,16 @@ const BookingsPage = () => {
                                                         <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border shadow-sm
                                                             ${booking.status === 'Completed' 
                                                                 ? 'bg-slate-100 text-slate-700 border-slate-200' 
+                                                                : booking.status === 'Quote Request' || booking.status === 'Pending'
+                                                                ? 'bg-amber-500/10 text-amber-600 border-amber-500/20'
                                                                 : 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'}`}>
                                                             {booking.status}
                                                         </span>
                                                     </td>
                                                     <td className="p-5 text-right font-black text-on-surface tracking-tight text-sm">
-                                                        ${booking.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                        {booking.isQuotation && booking.amount <= 0
+                                                            ? "Estimate pending"
+                                                            : `Rs. ${booking.amount.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
                                                     </td>
                                                     <td className="p-5 text-right">
                                                         <button className="material-symbols-outlined text-outline group-hover:text-primary transition-all p-2 hover:bg-slate-100 rounded-full">
@@ -1389,7 +1611,7 @@ const BookingsPage = () => {
                                     <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Current Booking Status</span>
                                     <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border shadow-sm
                                         ${selectedDetailBooking.status === 'Confirmed' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' : 
-                                          selectedDetailBooking.status === 'Pending' ? 'bg-amber-500/10 text-amber-600 border-amber-500/20' :
+                                          selectedDetailBooking.status === 'Pending' || selectedDetailBooking.status === 'Quote Request' ? 'bg-amber-500/10 text-amber-600 border-amber-500/20' :
                                           selectedDetailBooking.status === 'Counter Offer' ? 'bg-pink-500/10 text-pink-600 border-pink-500/20' :
                                           selectedDetailBooking.status === 'Declined' ? 'bg-rose-500/10 text-rose-600 border-rose-500/20' :
                                           'bg-slate-100 text-slate-700 border-slate-200'}`}>

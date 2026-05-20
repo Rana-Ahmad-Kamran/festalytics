@@ -49,13 +49,14 @@ const Calendar = () => {
                     </div>
                 ))}
             </div>
-            <motion.button 
+            <motion.a 
+                href="/vendor-dashboard/availability"
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                className="mt-auto w-full py-3.5 border-2 border-primary text-primary font-black rounded-full hover:bg-primary hover:text-white transition-all shadow-md uppercase tracking-widest text-[11px]"
+                className="mt-auto w-full py-3.5 border-2 border-primary text-primary font-black rounded-full hover:bg-primary hover:text-white transition-all shadow-md uppercase tracking-widest text-[11px] text-center block no-underline"
             >
                 Open Full Calendar
-            </motion.button>
+            </motion.a>
         </div>
     );
 };

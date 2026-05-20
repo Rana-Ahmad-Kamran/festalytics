@@ -9,9 +9,13 @@ import AnalyticsPreview from '@/components/vendor/AnalyticsPreview';
 import { db, auth } from "@/firebase";
 import { doc, getDoc } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
+import { listenToIncomingQuotations } from "@/lib/firestore/quotations";
 
 const VendorDashboard = () => {
     const [vendorName, setVendorName] = useState("Alex Rivera");
+    const [vendorSlug, setVendorSlug] = useState("zaydan-banquet-hall");
+    const [incomingQuotations, setIncomingQuotations] = useState([]);
+    const [quotationsError, setQuotationsError] = useState(null);
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -27,6 +31,9 @@ const VendorDashboard = () => {
                             if (userData.name) {
                                 setVendorName(userData.name);
                             }
+                            if (userData.venueId) {
+                                setVendorSlug(userData.venueId);
+                            }
                         }
                     } catch (err) {
                         console.error("Error fetching vendor name: ", err);
@@ -39,10 +46,25 @@ const VendorDashboard = () => {
         return () => unsubscribe();
     }, []);
 
+    useEffect(() => {
+        const unsubscribe = listenToIncomingQuotations(
+            vendorSlug,
+            (quotations) => {
+                setIncomingQuotations(quotations);
+                setQuotationsError(null);
+            },
+            (error) => {
+                setQuotationsError(error.message);
+            }
+        );
+
+        return () => unsubscribe();
+    }, [vendorSlug]);
+
     const metrics = [
         { icon: 'calendar_month', label: 'Total Bookings', value: '24', trend: '+12%', iconBg: 'bg-primary-fixed' },
         { icon: 'payments', label: 'Revenue', value: 'Rs. 4,250', trend: '+8%', iconBg: 'bg-tertiary-fixed' },
-        { icon: 'notification_important', label: 'Pending Requests', value: '3', trendLabel: 'View All', iconBg: 'bg-error-container' },
+        { icon: 'notification_important', label: 'Pending Requests', value: String(incomingQuotations.length), trendLabel: 'Live from ERP', iconBg: 'bg-error-container' },
         { icon: 'star', label: 'Average Rating', value: '4.8', trendLabel: '124 reviews', iconBg: 'bg-secondary-fixed' },
     ];
 
@@ -93,6 +115,55 @@ const VendorDashboard = () => {
                 {metrics.map((metric, idx) => (
                     <MetricCard key={idx} {...metric} />
                 ))}
+            </section>
+
+            {/* Incoming quotation requests (real-time) */}
+            <section className="mb-8">
+                <div className="card-level-1 rounded-3xl overflow-hidden">
+                    <div className="p-6 border-b border-outline-variant flex justify-between items-center bg-surface-container-low/50">
+                        <div>
+                            <h4 className="text-xl font-black tracking-tight">Incoming Quotation Requests</h4>
+                            <p className="text-sm text-on-surface-variant mt-1">
+                                Venue: <span className="font-semibold">{vendorSlug}</span>
+                            </p>
+                        </div>
+                        <span className="px-4 py-1.5 text-[10px] font-black rounded-full uppercase tracking-widest border bg-error-container text-on-error-container border-error/20">
+                            {incomingQuotations.length} pending
+                        </span>
+                    </div>
+                    {quotationsError ? (
+                        <p className="p-6 text-sm text-error">{quotationsError}</p>
+                    ) : incomingQuotations.length === 0 ? (
+                        <p className="p-6 text-sm text-on-surface-variant">No pending quotation requests right now.</p>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left">
+                                <thead className="bg-surface-container-low/30 border-b border-outline-variant">
+                                    <tr>
+                                        <th className="px-6 py-4 text-xs font-black text-on-surface-variant uppercase tracking-widest">Customer</th>
+                                        <th className="px-6 py-4 text-xs font-black text-on-surface-variant uppercase tracking-widest">Event Date</th>
+                                        <th className="px-6 py-4 text-xs font-black text-on-surface-variant uppercase tracking-widest">Guests</th>
+                                        <th className="px-6 py-4 text-xs font-black text-on-surface-variant uppercase tracking-widest">Menu</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-outline-variant">
+                                    {incomingQuotations.map((q) => (
+                                        <tr key={q.id} className="hover:bg-primary-fixed/30 transition-colors">
+                                            <td className="px-6 py-6 font-bold text-on-surface">{q.customerName}</td>
+                                            <td className="px-6 py-6 text-on-surface-variant">{q.eventDate}</td>
+                                            <td className="px-6 py-6 text-on-surface-variant">{q.guestCount}</td>
+                                            <td className="px-6 py-6 text-on-surface-variant">
+                                                {typeof q.selectedMenu === "object"
+                                                    ? q.selectedMenu?.packageName || q.selectedMenu?.name || "—"
+                                                    : String(q.selectedMenu ?? "—")}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
             </section>
 
             {/* Recent Activity & Calendar Section */}

@@ -5,8 +5,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import DashboardHeader from './DashboardHeader';
 import Footer from './Footer';
 import hallsData from '../data/halls.json';
-import { db } from "../firebase";
-import { doc, getDoc, setDoc, collection, addDoc } from "firebase/firestore";
+import { db, auth } from "../firebase";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import { submitCustomerQuotation } from "@/lib/firestore/quotations";
+import {
+  appendZaydanCallingRow,
+  quotationToCallingRow,
+  ZAYDAN_VENUE_SLUG,
+} from "@/lib/google/zaydanCallingSheet";
 
 const VenueDetails = () => {
   const { id } = useParams();
@@ -478,12 +484,68 @@ const VenueDetails = () => {
         remainingBalance: totalEstimation
       },
       status: 'Pending', // online request starts as Pending
+      bookingSource: 'online',
       bookedDate: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
     };
 
     try {
-      const bookingsRef = collection(db, "bookings");
-      await addDoc(bookingsRef, bookingPayload);
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        triggerQuoteToast("Please log in to submit a quotation request.", "error");
+        return;
+      }
+
+      const quotationResult = await submitCustomerQuotation({
+        userId: currentUser.uid,
+        customerName: clientName.trim(),
+        targetVenueId: docId,
+        eventDate,
+        guestCount: guestsCount,
+        selectedMenu: {
+          packageId: selectedPkgId || "",
+          packageName: selectedPkg?.name || "Venue Hire Only",
+          perPlatePrice: selectedPkg ? selectedPkg.perPlatePrice : 0,
+          dishes: selectedPkg ? (selectedPkg.dishes || []) : [],
+        },
+      });
+
+      if (docId === ZAYDAN_VENUE_SLUG) {
+        try {
+          await appendZaydanCallingRow(
+            quotationToCallingRow({
+              quotationId: quotationResult.quotationId,
+              userId: currentUser.uid,
+              customerName: clientName.trim(),
+              targetVenueId: docId,
+              eventDate,
+              guestCount: guestsCount,
+              status: "pending_vendor_approval",
+              selectedMenu: {
+                packageName: selectedPkg?.name || "Venue Hire Only",
+              },
+            }),
+            docId
+          );
+        } catch (sheetErr) {
+          console.warn("Zaydan calling sheet append failed:", sheetErr);
+        }
+      }
+
+      // Save online quote request to Google Sheets (legacy sheet)
+      try {
+        await fetch("/api/sync-bookings", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            bookings: [bookingPayload],
+            isMigration: false
+          })
+        });
+      } catch (sheetErr) {
+        console.warn("Could not save online request to Google Sheets:", sheetErr);
+      }
 
       setQuoteSubmitted(true);
       triggerQuoteToast("Quote Request Submitted Successfully to Vendor ERP!");
