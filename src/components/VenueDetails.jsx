@@ -13,6 +13,9 @@ import {
   quotationToCallingRow,
   ZAYDAN_VENUE_SLUG,
 } from "@/lib/google/zaydanCallingSheet";
+import PublicVenueCalendar from "@/components/venue/PublicVenueCalendar";
+import { getDateStatus } from "@/lib/firestore/venueCalendar";
+import { usePublicVenueCalendar } from "@/hooks/usePublicVenueCalendar";
 
 const VenueDetails = () => {
   const { id } = useParams();
@@ -170,8 +173,8 @@ const VenueDetails = () => {
   }, [venue]);
 
   const maxCapacity = dbVenue?.capacity || (venue?.capacity_sitting ? parseInt(venue.capacity_sitting) : 500) || 500;
-  const bookedDates = dbVenue?.bookedDates || [5, 12, 13, 20, 26, 27];
-  const blackoutDates = dbVenue?.blackoutDates || [14, 15];
+  const venueSlug = venue ? getFirestoreDocId(venue) : null;
+  const publicCal = usePublicVenueCalendar(venueSlug);
 
   useEffect(() => {
     if (guestsCount > maxCapacity) {
@@ -434,8 +437,15 @@ const VenueDetails = () => {
     const docId = getFirestoreDocId(venue);
 
     // Check if the selected date is already blocked in Firestore
-    if (dbVenue?.blockedDates && dbVenue.blockedDates.includes(eventDate)) {
-      triggerQuoteToast("Selected date is already booked at this venue! Please select another date.", "error");
+    if (publicCal.isDateUnavailable(eventDate)) {
+      const status = getDateStatus(eventDate, publicCal.calendarMeta);
+      const msg =
+        status === "blackout"
+          ? "This date is blocked by the venue (maintenance/blackout)."
+          : status === "pending"
+          ? "This date has a pending booking request."
+          : "Selected date is already booked at this venue!";
+      triggerQuoteToast(msg, "error");
       return;
     }
 
@@ -662,74 +672,12 @@ const VenueDetails = () => {
               </p>
             </div>
 
-            {/* Availability Calendar Section */}
-            <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-gray-100 space-y-6">
-              <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-[#D6336C]" /> Availability Calendar
-              </h2>
-              <p className="text-sm text-gray-500 font-medium leading-relaxed">
-                Check available event dates for October 2024. Booked slots and blackout dates are synchronized live from the vendor's database.
-              </p>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {/* Mini Calendar Grid */}
-                <div className="bg-gray-50/50 p-6 rounded-2xl border border-gray-100 shadow-inner">
-                  <div className="flex justify-between items-center mb-6">
-                    <h4 className="font-extrabold text-gray-800 text-sm uppercase tracking-wider">October 2024</h4>
-                  </div>
-                  <div className="grid grid-cols-7 gap-2 text-center text-[10px] font-black text-gray-400 uppercase mb-2">
-                    <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
-                  </div>
-                  <div className="grid grid-cols-7 gap-2">
-                    {Array.from({ length: 31 }, (_, i) => {
-                      const day = i + 1;
-                      const isBooked = bookedDates.includes(day);
-                      const isBlackout = blackoutDates.includes(day);
-                      return (
-                        <div 
-                          key={day} 
-                          className={`h-10 rounded-xl flex items-center justify-center text-xs font-black select-none transition-all ${
-                            isBooked ? 'bg-[#D6336C] text-white shadow-sm font-black' :
-                            isBlackout ? 'bg-slate-400 text-white font-medium' :
-                            'bg-white text-gray-800 border border-gray-100 hover:border-[#D6336C]/40 hover:text-[#D6336C] shadow-sm'
-                          }`}
-                        >
-                          {day}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Calendar Legend & Booking Callout */}
-                <div className="space-y-6 flex flex-col justify-between">
-                  <div className="space-y-4">
-                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Calendar Legend</h4>
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-5 h-5 rounded-lg bg-[#D6336C] shadow-sm"></div>
-                        <span className="text-xs font-bold text-gray-700">Fully Booked / Blocked Date</span>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <div className="w-5 h-5 rounded-lg bg-slate-400 shadow-sm"></div>
-                        <span className="text-xs font-bold text-gray-700">Vendor Blackout / Maintenance Day</span>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <div className="w-5 h-5 rounded-lg bg-white border border-gray-200 shadow-sm"></div>
-                        <span className="text-xs font-bold text-gray-700">Available Slot</span>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="p-4 bg-[#D6336C]/5 border border-[#D6336C]/10 rounded-2xl space-y-2">
-                    <span className="text-[10px] font-black text-[#D6336C] uppercase tracking-wider block">Planning an Event?</span>
-                    <p className="text-xs text-gray-600 leading-relaxed">
-                      Select your preferred date in the reservation quote form on the right side. Available slots fill up quickly during peak wedding seasons.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <PublicVenueCalendar
+              venueSlug={venueSlug}
+              hallName={venue.hall_name}
+              selectedDateKey={eventDate}
+              onSelectDate={setEventDate}
+            />
 
             {/* Facilities Grid */}
             <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-gray-100">
@@ -841,9 +789,9 @@ const VenueDetails = () => {
                           onChange={(e) => setEventDate(e.target.value)}
                           className="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-gray-800 focus:ring-1 focus:ring-[#D6336C] focus:border-[#D6336C] outline-none transition-all"
                         />
-                        {dbVenue?.blockedDates && dbVenue.blockedDates.includes(eventDate) && (
+                        {eventDate && publicCal.isDateUnavailable(eventDate) && (
                           <span className="text-[9px] text-red-500 font-black uppercase px-0.5 flex items-center gap-1 mt-1 animate-pulse">
-                            ✕ Date Already Booked at Venue!
+                            ✕ This date is not available — choose another from the calendar
                           </span>
                         )}
                       </div>
