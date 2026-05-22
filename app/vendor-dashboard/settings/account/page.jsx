@@ -34,19 +34,9 @@ const AccountSettings = () => {
                     
                     if (userDocSnap.exists()) {
                         const userData = userDocSnap.data();
-                        if (userData.name) setFullName(userData.name);
-                        if (userData.phone) setPhone(userData.phone);
+                        setFullName(userData.fullName || userData.name || fullName);
+                        setPhone(userData.mobileNumber || userData.phone || phone);
                         if (userData.bio) setBio(userData.bio);
-                    } else {
-                        // Document doesn't exist yet, seed with defaults
-                        await setDoc(userDocRef, {
-                            name: "Ukasha Khan",
-                            phone: "03104804228",
-                            bio: "Owner and Operations Lead. Managing wedding venues and vendor relations since 2021.",
-                            role: "vendor",
-                            venueId: "zaydan-banquet-hall",
-                            createdAt: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-                        });
                     }
                 } catch (err) {
                     console.error("Error fetching user account profile: ", err);
@@ -71,10 +61,11 @@ const AccountSettings = () => {
         try {
             const userDocRef = doc(db, "users", userId);
             await setDoc(userDocRef, {
+                fullName,
                 name: fullName,
+                mobileNumber: phone,
                 phone: phone,
                 bio: bio,
-                venueId: "zaydan-banquet-hall",
                 updatedAt: new Date().toISOString()
             }, { merge: true });
 

@@ -25,12 +25,60 @@ const VenueDetails = () => {
   const [rating, setRating] = useState('4.5');
 
   useEffect(() => {
-    // Find venue by ID or slugified Name
-    const foundVenue = hallsData.find(h => 
-      h.hall_id?.toString() === id || 
-      (h.hall_name && h.hall_name.toLowerCase().replace(/\s+/g, '-') === id.toLowerCase())
-    );
-    setVenue(foundVenue);
+    const loadVenue = async () => {
+      const foundInJson = hallsData.find(
+        (h) =>
+          h.hall_id?.toString() === id ||
+          (h.hall_name && h.hall_name.toLowerCase().replace(/\s+/g, "-") === id?.toLowerCase())
+      );
+
+      if (foundInJson) {
+        setVenue(foundInJson);
+        return;
+      }
+
+      try {
+        const docRef = doc(db, "venues", id);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          const profile = data.profile || {};
+          setVenue({
+            hall_id: id,
+            hall_name: profile.hall_name || data.name || data.hallName || id.replace(/-/g, " "),
+            description:
+              profile.description ||
+              data.description ||
+              "A premium wedding and event venue on Festalytics.",
+            full_address: profile.address || data.streetAddress || "",
+            area: profile.area || data.city || "Lahore",
+            phone_1: profile.phone_1 || "",
+            capacity_sitting: String(profile.capacity || data.capacity || 500),
+            one_dish_chicken: String(data.pricing?.chickenPrice || 2000),
+            one_dish_beef: String(data.pricing?.beefPrice || 2850),
+            one_dish_mutton: String(data.pricing?.muttonPrice || 4100),
+            images: (data.images || []).map((img, idx) =>
+              typeof img === "string"
+                ? img
+                : img?.url || "https://images.unsplash.com/photo-1519167758481-83f550bb49b3?w=800&q=80"
+            ),
+            is_air_conditioned: "yes",
+            generator_backup: "yes",
+            decoration_in_house: "yes",
+            bridal_room: "yes",
+            parking_capacity: "100",
+            isFromFirestoreOnly: true,
+          });
+        } else {
+          setVenue(null);
+        }
+      } catch (err) {
+        console.error("Error loading Firestore-only venue:", err);
+        setVenue(null);
+      }
+    };
+
+    if (id) loadVenue();
   }, [id]);
 
   useEffect(() => {
@@ -64,7 +112,10 @@ const VenueDetails = () => {
   const [quoteToast, setQuoteToast] = useState({ show: false, message: "", type: "success" });
 
   const getFirestoreDocId = (venueObj) => {
-    if (!venueObj) return null;
+    if (!venueObj) return id || null;
+    if (venueObj.isFromFirestoreOnly && venueObj.hall_id) {
+      return venueObj.hall_id;
+    }
     const name = venueObj.hall_name ? venueObj.hall_name.toLowerCase() : "";
     if (venueObj.hall_id === "1" || name.includes("zaydan banquet hall")) {
       return "zaydan-banquet-hall";
@@ -72,7 +123,11 @@ const VenueDetails = () => {
     if (venueObj.hall_id === "2" || name.includes("qasar e zaydan")) {
       return "qasar-e-zaydan";
     }
-    return venueObj.hall_id?.toString() || venueObj.hall_name?.toLowerCase().replace(/\s+/g, '-');
+    const slug = venueObj.hall_name?.toLowerCase().replace(/\s+/g, "-");
+    if (slug && !/^\d+$/.test(String(venueObj.hall_id))) {
+      return slug;
+    }
+    return id || venueObj.hall_id?.toString() || slug;
   };
 
   useEffect(() => {

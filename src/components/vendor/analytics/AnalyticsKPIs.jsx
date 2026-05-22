@@ -2,19 +2,61 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 
-const AnalyticsKPIs = () => {
+const AnalyticsKPIs = ({ analytics, isLoading = false }) => {
+    const {
+        totalRevenue = 0,
+        totalBookings = 0,
+        conversionRate = 0,
+        averageRating = 0,
+        reviewCount = 0,
+    } = analytics || {};
+
     const kpis = [
-        { label: 'Total Revenue', value: 'Rs. 12,450', trend: '+15%', icon: 'payments', color: 'primary', bg: 'primary-fixed', shadow: 'candy-shadow-pink' },
-        { label: 'Total Bookings', value: '127', trend: '+8', icon: 'calendar_today', color: 'secondary', bg: 'secondary-container' },
-        { label: 'Conversion Rate', value: '3.2%', trend: null, icon: 'filter_alt', color: 'tertiary', bg: 'tertiary-fixed' },
-        { label: 'Average Rating', value: '4.7/5', trend: '4.7', icon: 'star', color: 'primary', bg: 'surface-container-high', isRating: true },
+        {
+            label: 'Total Revenue',
+            value: isLoading ? '—' : totalRevenue > 0 ? `Rs. ${totalRevenue.toLocaleString()}` : 'Rs. 0',
+            trend: totalRevenue > 0 ? 'Live' : null,
+            icon: 'payments',
+            color: 'primary',
+            bg: 'primary-fixed',
+            shadow: 'candy-shadow-pink',
+            sub: 'From confirmed bookings',
+        },
+        {
+            label: 'Total Bookings',
+            value: isLoading ? '—' : String(totalBookings),
+            trend: totalBookings > 0 ? 'Live' : null,
+            icon: 'calendar_today',
+            color: 'secondary',
+            bg: 'secondary-container',
+            sub: 'Firestore bookings',
+        },
+        {
+            label: 'Conversion Rate',
+            value: isLoading ? '—' : totalBookings + (analytics?.pendingCount || 0) > 0 ? `${conversionRate}%` : '—',
+            trend: null,
+            icon: 'filter_alt',
+            color: 'tertiary',
+            bg: 'tertiary-fixed',
+            sub: 'Bookings vs quote requests',
+        },
+        {
+            label: 'Average Rating',
+            value: isLoading ? '—' : averageRating > 0 ? `${averageRating.toFixed(1)}/5` : '—',
+            trend: averageRating > 0 ? averageRating.toFixed(1) : null,
+            icon: 'star',
+            color: 'primary',
+            bg: 'surface-container-high',
+            isRating: true,
+            sub: reviewCount > 0 ? `From ${reviewCount} reviews` : 'No reviews yet',
+        },
     ];
 
     return (
         <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {kpis.map((kpi, idx) => (
                 <motion.div
-                    key={idx}
+                    key={kpi.label}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: idx * 0.1 }}
@@ -28,21 +70,15 @@ const AnalyticsKPIs = () => {
                             </span>
                         </div>
                         {kpi.trend && (
-                            <div className={`flex items-center gap-1 font-black text-[10px] px-3 py-1 rounded-full uppercase tracking-wider
-                                ${kpi.trend.startsWith('+') ? 'bg-emerald-100 text-emerald-700' : 'bg-primary-fixed text-primary'}
-                            `}>
-                                {kpi.trend.startsWith('+') && <span className="material-symbols-outlined text-xs">trending_up</span>}
+                            <div className="flex items-center gap-1 font-black text-[10px] px-3 py-1 rounded-full uppercase tracking-wider bg-primary-fixed text-primary">
                                 {kpi.trend}
                             </div>
-                        )}
-                        {!kpi.trend && kpi.label === 'Conversion Rate' && (
-                            <span className="material-symbols-outlined text-outline">horizontal_rule</span>
                         )}
                     </div>
                     <h3 className="text-on-surface-variant text-[10px] font-black uppercase tracking-[0.15em]">{kpi.label}</h3>
                     <p className="text-4xl font-black text-on-surface mt-2 tracking-tight">{kpi.value}</p>
                     <p className="text-[10px] font-bold text-on-surface-variant/60 mt-3 uppercase tracking-widest">
-                        {kpi.label === 'Average Rating' ? 'From 28 reviews' : 'vs last period'}
+                        {kpi.sub}
                     </p>
                 </motion.div>
             ))}

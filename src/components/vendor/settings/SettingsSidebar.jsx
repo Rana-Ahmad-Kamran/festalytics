@@ -3,44 +3,32 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { db, auth } from "@/firebase";
+import { db } from "@/firebase";
 import { doc, getDoc } from "firebase/firestore";
-import { onAuthStateChanged } from "firebase/auth";
+import { useVendorVenue } from "@/hooks/useVendorVenue";
 
 const SettingsSidebar = () => {
     const pathname = usePathname();
-    const [businessName, setBusinessName] = useState("Zaydan Banquet Hall");
+    const { venueId } = useVendorVenue();
+    const [businessName, setBusinessName] = useState("Your venue");
 
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                try {
-                    const userDocRef = doc(db, "users", user.uid);
-                    const userDocSnap = await getDoc(userDocRef);
-                    if (userDocSnap.exists()) {
-                        const userData = userDocSnap.data();
-                        const vId = userData.venueId || "zaydan-banquet-hall";
-                        
-                        const venueDocRef = doc(db, "venues", vId);
-                        const venueDocSnap = await getDoc(venueDocRef);
-                        if (venueDocSnap.exists()) {
-                            const venueData = venueDocSnap.data();
-                            if (venueData.name) {
-                                setBusinessName(venueData.name);
-                            }
-                        } else if (userData.name) {
-                            setBusinessName(userData.name);
-                        }
-                    }
-                } catch (err) {
-                    console.error("Error loading sidebar business details: ", err);
+        if (!venueId) return;
+        const load = async () => {
+            try {
+                const venueDocSnap = await getDoc(doc(db, "venues", venueId));
+                if (venueDocSnap.exists()) {
+                    const venueData = venueDocSnap.data();
+                    setBusinessName(
+                        venueData.profile?.hall_name || venueData.name || venueData.hallName || "Your venue"
+                    );
                 }
-            } else {
-                setBusinessName("Zaydan Banquet Hall");
+            } catch (err) {
+                console.error("Error loading sidebar business details: ", err);
             }
-        });
-        return () => unsubscribe();
-    }, []);
+        };
+        load();
+    }, [venueId]);
 
     const navItems = [
         { label: 'Account', icon: 'person', href: '/vendor-dashboard/settings/account' },

@@ -4,9 +4,10 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FaUser, FaStore, FaGoogle, FaTimes, FaUpload, FaFileImage, FaEnvelopeOpenText } from 'react-icons/fa';
-import { createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, updateProfile } from "firebase/auth";
+import { createUserWithEmailAndPassword, deleteUser, GoogleAuthProvider, signInWithPopup, updateProfile } from "firebase/auth";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from '../firebase';
+import { provisionVendorVenue } from '@/lib/firestore/vendorOnboarding';
 
 const SignupPage = () => {
     const [role, setRole] = useState('user');
@@ -23,6 +24,13 @@ const SignupPage = () => {
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [cnic, setCnic] = useState('');
+    const [hallName, setHallName] = useState('');
+    const [area, setArea] = useState('');
+    const [streetAddress, setStreetAddress] = useState('');
+    const [capacity, setCapacity] = useState('');
+    const [businessPhone, setBusinessPhone] = useState('');
+    const [hallDescription, setHallDescription] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const handleClose = () => {
         router.push('/');
@@ -58,18 +66,16 @@ const SignupPage = () => {
             return;
         }
 
+        setIsSubmitting(true);
+
         try {
-            // 2. Authentication: Create User
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const user = userCredential.user;
             const fullName = `${firstName} ${lastName}`.trim();
 
-            // 3. Profile Update
             await updateProfile(user, { displayName: fullName });
             await user.reload();
 
-            // 4. Firestore Storage
-            console.log("Saving user data to Firestore...");
             await setDoc(doc(db, 'users', user.uid), {
                 uid: user.uid,
                 firstName,
@@ -83,18 +89,41 @@ const SignupPage = () => {
                 cnic: role === 'vendor' ? cnic : null,
                 createdAt: serverTimestamp()
             });
-            console.log("User document created successfully.");
 
-            // 5. Navigation
             if (role === 'vendor') {
-                router.push('/vendor-dashboard');
+                try {
+                    const { venueId } = await provisionVendorVenue(user.uid, {
+                        hallName,
+                        area,
+                        address: streetAddress,
+                        capacity,
+                        businessPhone: businessPhone || mobileNumber,
+                        mobileNumber,
+                        description: hallDescription,
+                    });
+                    console.log("Venue provisioned:", venueId);
+                    router.push('/vendor-dashboard');
+                } catch (provisionErr) {
+                    console.error("Venue provisioning failed:", provisionErr);
+                    try {
+                        await deleteUser(user);
+                    } catch (deleteErr) {
+                        console.warn("Could not rollback auth user:", deleteErr);
+                    }
+                    alert(
+                        "Account created but venue setup failed: " +
+                            provisionErr.message +
+                            ". Please try signing up again or contact support."
+                    );
+                }
             } else {
                 router.push('/user-dashboard');
             }
-
         } catch (error) {
             console.error("Signup Error:", error);
             alert("Signup Failed: " + error.message);
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -252,6 +281,35 @@ const SignupPage = () => {
                                     <label className="text-gray-300 text-xs font-medium ml-1">Email</label>
                                     <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="vendor@example.com" className="w-full bg-[#151515] text-white border border-white/10 rounded-lg p-2 outline-none focus:ring-1 focus:ring-[#D6336C] text-sm" required />
                                 </div>
+                                <div className="border-t border-white/10 pt-3 mt-1">
+                                    <p className="text-[10px] font-black text-[#D6336C] uppercase tracking-widest mb-2">Your venue / hall</p>
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                    <label className="text-gray-300 text-xs font-medium ml-1">Hall / Business Name *</label>
+                                    <input type="text" value={hallName} onChange={(e) => setHallName(e.target.value)} placeholder="e.g. Royal Garden Banquet" className="w-full bg-[#151515] text-white border border-white/10 rounded-lg p-2 outline-none focus:ring-1 focus:ring-[#D6336C] text-sm" required />
+                                </div>
+                                <div className="flex gap-3">
+                                    <div className="flex flex-col gap-1 w-1/2">
+                                        <label className="text-gray-300 text-xs font-medium ml-1">City / Area *</label>
+                                        <input type="text" value={area} onChange={(e) => setArea(e.target.value)} placeholder="Johar Town" className="w-full bg-[#151515] text-white border border-white/10 rounded-lg p-2 outline-none focus:ring-1 focus:ring-[#D6336C] text-sm" required />
+                                    </div>
+                                    <div className="flex flex-col gap-1 w-1/2">
+                                        <label className="text-gray-300 text-xs font-medium ml-1">Capacity (guests) *</label>
+                                        <input type="number" min="1" value={capacity} onChange={(e) => setCapacity(e.target.value)} placeholder="500" className="w-full bg-[#151515] text-white border border-white/10 rounded-lg p-2 outline-none focus:ring-1 focus:ring-[#D6336C] text-sm" required />
+                                    </div>
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                    <label className="text-gray-300 text-xs font-medium ml-1">Street Address *</label>
+                                    <input type="text" value={streetAddress} onChange={(e) => setStreetAddress(e.target.value)} placeholder="Plot 12, Block A, Main Road" className="w-full bg-[#151515] text-white border border-white/10 rounded-lg p-2 outline-none focus:ring-1 focus:ring-[#D6336C] text-sm" required />
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                    <label className="text-gray-300 text-xs font-medium ml-1">Business Phone (optional)</label>
+                                    <input type="tel" value={businessPhone} onChange={(e) => setBusinessPhone(e.target.value)} placeholder="Same as mobile or hall line" className="w-full bg-[#151515] text-white border border-white/10 rounded-lg p-2 outline-none focus:ring-1 focus:ring-[#D6336C] text-sm" />
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                    <label className="text-gray-300 text-xs font-medium ml-1">Short description (optional)</label>
+                                    <textarea value={hallDescription} onChange={(e) => setHallDescription(e.target.value)} placeholder="Brief description for your public listing..." rows={2} className="w-full bg-[#151515] text-white border border-white/10 rounded-lg p-2 outline-none focus:ring-1 focus:ring-[#D6336C] text-sm resize-none" />
+                                </div>
                                 <div className="flex flex-col gap-1">
                                     <label className="text-gray-300 text-xs font-medium ml-1">Password</label>
                                     <input type="password" value={password} onChange={(e) => { setPassword(e.target.value); setConfirmPassword(e.target.value) }} placeholder="Create password" className="w-full bg-[#151515] text-white border border-white/10 rounded-lg p-2 outline-none focus:ring-1 focus:ring-[#D6336C] text-sm" required />
@@ -276,8 +334,8 @@ const SignupPage = () => {
                             </>
                         )}
 
-                        <button type="submit" className="w-full bg-[#D6336C] hover:bg-[#C2255C] text-white font-bold py-2 rounded-lg transition-colors shadow-lg mt-2 cursor-pointer text-sm">
-                            Sign Up as {role === 'user' ? 'User' : 'Vendor'}
+                        <button type="submit" disabled={isSubmitting} className="w-full bg-[#D6336C] hover:bg-[#C2255C] disabled:opacity-60 text-white font-bold py-2 rounded-lg transition-colors shadow-lg mt-2 cursor-pointer text-sm">
+                            {isSubmitting ? 'Creating account...' : `Sign Up as ${role === 'user' ? 'User' : 'Vendor'}`}
                         </button>
                     </form>
 

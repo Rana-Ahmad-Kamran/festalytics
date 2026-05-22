@@ -4,8 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { db } from "@/firebase";
 import { doc, getDoc } from "firebase/firestore";
-import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "@/firebase";
+import { useVendorVenue } from "@/hooks/useVendorVenue";
 import {
   subscribeVenueCalendar,
   saveVenueCalendar,
@@ -14,10 +13,8 @@ import {
   normalizeLegacyDayNumbers,
 } from "@/lib/firestore/venueCalendar";
 
-const DEFAULT_VENUE = "zaydan-banquet-hall";
-
 export function useVenueCalendar() {
-  const [venueId, setVenueId] = useState(DEFAULT_VENUE);
+  const { venueId, isLoading: venueLoading, hasVenue } = useVendorVenue();
   const [viewYear, setViewYear] = useState(() => new Date().getFullYear());
   const [viewMonth, setViewMonth] = useState(() => new Date().getMonth());
   const [selectedDateKey, setSelectedDateKey] = useState(() => {
@@ -40,25 +37,7 @@ export function useVenueCalendar() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (user) => {
-      if (!user) {
-        setVenueId(DEFAULT_VENUE);
-        return;
-      }
-      try {
-        const userSnap = await getDoc(doc(db, "users", user.uid));
-        if (userSnap.exists() && userSnap.data().venueId) {
-          setVenueId(userSnap.data().venueId);
-        }
-      } catch (err) {
-        console.error("useVenueCalendar: auth venue resolve failed", err);
-      }
-    });
-    return () => unsub();
-  }, []);
-
-  useEffect(() => {
-    if (!venueId) return;
+    if (venueLoading || !venueId) return;
     setIsLoading(true);
 
     const unsubVenue = subscribeVenueCalendar(venueId, (data) => {
@@ -330,7 +309,9 @@ export function useVenueCalendar() {
   };
 
   return {
-    venueId,
+    venueId: venueId || null,
+    hasVenue,
+    venueLoading,
     viewYear,
     viewMonth,
     selectedDateKey,

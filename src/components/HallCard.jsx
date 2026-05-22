@@ -19,9 +19,12 @@ const HallCard = ({ venue, index, imagePath }) => {
   // Use dynamically passed imagePath prop, ensuring underscore for the main folder
   const imageSrc = (imagePath || '/images/placeholder-hall.jpg').replace('/Marriage Hall/', '/Marriage_hall/');
 
-  const handleCardClick = () => {
-    const venueId = venue.hall_id || venue.hall_name.toLowerCase().replace(/\s+/g, '-');
-    router.push(`/venue/${venueId}`);
+    const handleCardClick = () => {
+    const slug =
+      venue.isFromDb && venue.hall_id
+        ? venue.hall_id
+        : venue.hall_id?.toString() || venue.hall_name?.toLowerCase().replace(/\s+/g, '-');
+    router.push(`/venue/${slug}`);
   };
 
   return (

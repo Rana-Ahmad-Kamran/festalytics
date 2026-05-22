@@ -9,13 +9,12 @@ import AnalyticsPreview from '@/components/vendor/AnalyticsPreview';
 import { db, auth } from "@/firebase";
 import { doc, getDoc } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
-import { listenToIncomingQuotations } from "@/lib/firestore/quotations";
+import { useVendorVenue } from "@/hooks/useVendorVenue";
+import { useVendorAnalyticsData } from "@/hooks/useVendorAnalyticsData";
 
 const VendorDashboard = () => {
-    const [vendorName, setVendorName] = useState("Alex Rivera");
-    const [vendorSlug, setVendorSlug] = useState("zaydan-banquet-hall");
-    const [incomingQuotations, setIncomingQuotations] = useState([]);
-    const [quotationsError, setQuotationsError] = useState(null);
+    const [vendorName, setVendorName] = useState("Vendor");
+    const { venueId: vendorSlug, analytics, isLoading: analyticsLoading, pendingQuotations, error: analyticsError } = useVendorAnalyticsData();
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -28,44 +27,48 @@ const VendorDashboard = () => {
                         const userDocSnap = await getDoc(userDocRef);
                         if (userDocSnap.exists()) {
                             const userData = userDocSnap.data();
-                            if (userData.name) {
-                                setVendorName(userData.name);
-                            }
-                            if (userData.venueId) {
-                                setVendorSlug(userData.venueId);
-                            }
+                            setVendorName(userData.fullName || userData.name || "Vendor");
                         }
                     } catch (err) {
                         console.error("Error fetching vendor name: ", err);
                     }
                 }
             } else {
-                setVendorName("Alex Rivera");
+                setVendorName("Vendor");
             }
         });
         return () => unsubscribe();
     }, []);
 
-    useEffect(() => {
-        const unsubscribe = listenToIncomingQuotations(
-            vendorSlug,
-            (quotations) => {
-                setIncomingQuotations(quotations);
-                setQuotationsError(null);
-            },
-            (error) => {
-                setQuotationsError(error.message);
-            }
-        );
-
-        return () => unsubscribe();
-    }, [vendorSlug]);
-
     const metrics = [
-        { icon: 'calendar_month', label: 'Total Bookings', value: '24', trend: '+12%', iconBg: 'bg-primary-fixed' },
-        { icon: 'payments', label: 'Revenue', value: 'Rs. 4,250', trend: '+8%', iconBg: 'bg-tertiary-fixed' },
-        { icon: 'notification_important', label: 'Pending Requests', value: String(incomingQuotations.length), trendLabel: 'Live from ERP', iconBg: 'bg-error-container' },
-        { icon: 'star', label: 'Average Rating', value: '4.8', trendLabel: '124 reviews', iconBg: 'bg-secondary-fixed' },
+        {
+            icon: 'calendar_month',
+            label: 'Total Bookings',
+            value: analyticsLoading ? '—' : String(analytics.totalBookings),
+            trendLabel: 'Live from Firestore',
+            iconBg: 'bg-primary-fixed',
+        },
+        {
+            icon: 'payments',
+            label: 'Revenue',
+            value: analyticsLoading ? '—' : analytics.totalRevenue > 0 ? `Rs. ${analytics.totalRevenue.toLocaleString()}` : 'Rs. 0',
+            trendLabel: 'Confirmed bookings',
+            iconBg: 'bg-tertiary-fixed',
+        },
+        {
+            icon: 'notification_important',
+            label: 'Pending Requests',
+            value: analyticsLoading ? '—' : String(analytics.pendingCount),
+            trendLabel: 'Live from ERP',
+            iconBg: 'bg-error-container',
+        },
+        {
+            icon: 'star',
+            label: 'Average Rating',
+            value: analyticsLoading ? '—' : analytics.averageRating > 0 ? analytics.averageRating.toFixed(1) : '—',
+            trendLabel: analytics.reviewCount > 0 ? `${analytics.reviewCount} reviews` : 'No reviews yet',
+            iconBg: 'bg-secondary-fixed',
+        },
     ];
 
     // Format current date dynamically
@@ -128,12 +131,12 @@ const VendorDashboard = () => {
                             </p>
                         </div>
                         <span className="px-4 py-1.5 text-[10px] font-black rounded-full uppercase tracking-widest border bg-error-container text-on-error-container border-error/20">
-                            {incomingQuotations.length} pending
+                            {pendingQuotations.length} pending
                         </span>
                     </div>
-                    {quotationsError ? (
-                        <p className="p-6 text-sm text-error">{quotationsError}</p>
-                    ) : incomingQuotations.length === 0 ? (
+                    {analyticsError ? (
+                        <p className="p-6 text-sm text-error">{analyticsError}</p>
+                    ) : pendingQuotations.length === 0 ? (
                         <p className="p-6 text-sm text-on-surface-variant">No pending quotation requests right now.</p>
                     ) : (
                         <div className="overflow-x-auto">
@@ -147,16 +150,12 @@ const VendorDashboard = () => {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-outline-variant">
-                                    {incomingQuotations.map((q) => (
-                                        <tr key={q.id} className="hover:bg-primary-fixed/30 transition-colors">
-                                            <td className="px-6 py-6 font-bold text-on-surface">{q.customerName}</td>
+                                    {pendingQuotations.map((q) => (
+                                        <tr key={q.docId || q.id} className="hover:bg-primary-fixed/30 transition-colors">
+                                            <td className="px-6 py-6 font-bold text-on-surface">{q.customer?.name}</td>
                                             <td className="px-6 py-6 text-on-surface-variant">{q.eventDate}</td>
-                                            <td className="px-6 py-6 text-on-surface-variant">{q.guestCount}</td>
-                                            <td className="px-6 py-6 text-on-surface-variant">
-                                                {typeof q.selectedMenu === "object"
-                                                    ? q.selectedMenu?.packageName || q.selectedMenu?.name || "—"
-                                                    : String(q.selectedMenu ?? "—")}
-                                            </td>
+                                            <td className="px-6 py-6 text-on-surface-variant">{q.raw?.eventDetails?.guests ?? "—"}</td>
+                                            <td className="px-6 py-6 text-on-surface-variant">{q.service}</td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -168,12 +167,16 @@ const VendorDashboard = () => {
 
             {/* Recent Activity & Calendar Section */}
             <section className="grid grid-cols-1 lg:grid-cols-[1fr_350px] gap-6 mb-8">
-                <RecentBookings />
+                <RecentBookings bookings={analytics.recentBookings} isLoading={analyticsLoading} />
                 <Calendar />
             </section>
 
             {/* Analytics Preview */}
-            <AnalyticsPreview />
+            <AnalyticsPreview
+                last7DaysBookings={analytics.last7DaysBookings}
+                servicePopularity={analytics.servicePopularity}
+                isLoading={analyticsLoading}
+            />
         </>
     );
 };

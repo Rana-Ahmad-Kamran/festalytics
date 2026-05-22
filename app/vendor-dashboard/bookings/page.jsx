@@ -1,10 +1,10 @@
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { db, auth } from "@/firebase";
+import { db } from "@/firebase";
 import { doc, getDoc, updateDoc, arrayUnion, collection, getDocs, query, where } from "firebase/firestore";
-import { onAuthStateChanged } from "firebase/auth";
+import { useVendorVenue } from "@/hooks/useVendorVenue";
 import BookingStats from '@/components/vendor/bookings/BookingStats';
 import BookingFilters from '@/components/vendor/bookings/BookingFilters';
 import {
@@ -36,7 +36,7 @@ function mergeBookingRows(...lists) {
 const BookingsPage = () => {
     const router = useRouter();
     const [showWalkinForm, setShowWalkinForm] = useState(false);
-    const [venueId, setVenueId] = useState("zaydan-banquet-hall");
+    const { venueId, isLoading: venueLoading } = useVendorVenue();
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [toast, setToast] = useState({ show: false, message: "", type: "success" });
@@ -89,99 +89,14 @@ const BookingsPage = () => {
     // Receipt details for post-booking success display
     const [createdReceipt, setCreatedReceipt] = useState(null);
 
-    // Mock Backup Bookings (fully styled with complete raw breakdown segments)
-    const mockBookings = [
-        { 
-            id: 'BK-9821', 
-            customer: { name: 'Elena Rodriguez', email: 'elena.r@email.com', contact: '+92 300 1234567', avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCQ3nJZ87eTfTn0xGvVPaSBmxoK_bKNjw0lxJNe5-1UWwXqIwGVnroC5Kw8CHtDR1u4qYbctnLrlF-X9MiuHCHMCyESsRpJNRdCP6WXEfOrfiWrx6j_aQu1yUU-2xtsJgjvoLolXADAcnM-hLxTRFt5SKFZG90C6eQ9ivNOK1NtNAjmgxtDUXD1MB8OUjtF6h3H6TZMkW99ldlYJk1prHzUqS8bm5PhE6O_KLgWOeTg3CP3kBzSao4V-cyOB7vtXZ69UjoGe3fc7Lc' },
-            service: 'Wedding (Barat)',
-            bookedDate: 'Oct 12',
-            eventDate: '2026-06-24',
-            status: 'Confirmed',
-            source: 'Online Portal',
-            amount: 810000.00,
-            raw: {
-                eventDetails: { guests: 200, category: 'Barat', date: '2026-06-24', timing: 'Evening (7:00 PM - 10:00 PM)' },
-                catering: { packageName: 'Luxury Menu', dishes: ['Mutton Korma', 'Biryani', 'Chicken Tikka', 'Naan', 'Kheer'] },
-                addons: { ac: true, generator: true, decor: true, sound: false },
-                financials: { hallRent: 250000, cateringCost: 400000, utilitiesCost: 40000, addonsCost: 120000, grandTotal: 810000, advancePaid: 100000, remainingBalance: 710000 }
-            }
-        },
-        { 
-            id: 'BK-9818', 
-            customer: { name: 'Marcus Chen', email: 'm.chen@service.io', contact: '+92 321 9876543', avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCGc2J-sK-BvFCADAZQGVMhf10TyYi6DhD6Yc1atlF1lmKS4EVjSeFJQJMk7I8qhvjZZA6vPQW47J-e6c0K8w-odx25J7CiSl4He_ZSmWSa_xc06cIdJkVU_SRZH5gNH_OUoIUDAM4xxPCCcbVtbWBkmQOSjltWd71pfaOpr8qACJoiVZuJU5eg0_ClQVCIDr7ivBuSLAB3bpadqC1xFqw3iK2m8yCwE9Fsqmoh3ks6dJfuA3nFEiew7CebUxiEeLHTRbP3O81w15w' },
-            service: 'Birthday (Party)',
-            bookedDate: 'Oct 10',
-            eventDate: '2026-07-15',
-            status: 'Pending',
-            source: 'Online Portal',
-            amount: 320000.00,
-            raw: {
-                eventDetails: { guests: 100, category: 'Party', date: '2026-07-15', timing: 'Morning (1:00 PM - 4:00 PM)' },
-                catering: { packageName: 'Standard Menu', dishes: ['Chicken Karahi', 'Egg Fried Rice', 'Manchurian', 'Salad', 'Ice Cream'] },
-                addons: { ac: true, generator: false, decor: false, sound: true },
-                financials: { hallRent: 150000, cateringCost: 140000, utilitiesCost: 15000, addonsCost: 15000, grandTotal: 320000, advancePaid: 50000, remainingBalance: 270000 }
-            }
-        },
-        { 
-            id: 'BK-9805', 
-            customer: { name: 'Alice Schmidt', email: 'alice.s@web.de', contact: '+92 312 4567890', avatar: null },
-            service: 'Walima Banquet',
-            bookedDate: 'Sep 28',
-            eventDate: '2026-05-05',
-            status: 'Completed',
-            source: 'Walk-in ERP',
-            amount: 980000.00,
-            raw: {
-                eventDetails: { guests: 300, category: 'Walima', date: '2026-05-05', timing: 'Evening (7:00 PM - 10:00 PM)' },
-                catering: { packageName: 'Royal Feast Menu', dishes: ['Mutton Pullao', 'Chicken Qorma', 'Seekh Kabab', 'Roghnii Naan', 'Jalebi'] },
-                addons: { ac: true, generator: true, decor: true, sound: true },
-                financials: { hallRent: 300000, cateringCost: 500000, utilitiesCost: 60000, addonsCost: 120000, grandTotal: 980000, advancePaid: 300000, remainingBalance: 680000 }
-            }
-        }
-    ];
-
     // Show dynamic toast helper
     const triggerToast = (message, type = "success") => {
         setToast({ show: true, message, type });
         setTimeout(() => setToast({ show: false, message: "", type: "success" }), 3500);
     };
 
-    // 1. Resolve logged-in vendor's associated venue document ID dynamically from auth session
-    useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                try {
-                    // Fetch user document from users collection to extract associated venueId
-                    const userDocRef = doc(db, "users", user.uid);
-                    const userDocSnap = await getDoc(userDocRef);
-                    if (userDocSnap.exists()) {
-                        const userData = userDocSnap.data();
-                        if (userData.venueId) {
-                            setVenueId(userData.venueId);
-                        } else {
-                            // Fallback to default zaydan-banquet-hall
-                            setVenueId("zaydan-banquet-hall");
-                        }
-                    } else {
-                        // Fallback to default zaydan-banquet-hall
-                        setVenueId("zaydan-banquet-hall");
-                    }
-                } catch (err) {
-                    console.error("Error resolving vendor multi-tenant context: ", err);
-                    setVenueId("zaydan-banquet-hall");
-                }
-            } else {
-                // If not logged in, we preserve development mode pointing to zaydan-banquet-hall
-                setVenueId("zaydan-banquet-hall");
-            }
-        });
-
-        return () => unsubscribe();
-    }, []);
-
-    // Load active service data and previous bookings from database dynamically based on venueId
     const loadData = async () => {
+        if (!venueId) return;
         setIsLoading(true);
         try {
             // 1. Fetch Venue details to retrieve dynamic pricing and catering menu cards
@@ -326,10 +241,16 @@ const BookingsPage = () => {
     };
 
     useEffect(() => {
-        loadData();
-    }, [venueId]);
+        if (!venueLoading && venueId) {
+            loadData();
+        }
+    }, [venueId, venueLoading]);
 
     useEffect(() => {
+        if (venueLoading || !venueId) {
+            return;
+        }
+
         const unsubscribeQuotations = listenToIncomingQuotations(
             venueId,
             (quotations) => {
@@ -362,7 +283,7 @@ const BookingsPage = () => {
             unsubscribeQuotations();
             unsubscribeBookings();
         };
-    }, [venueId]);
+    }, [venueId, venueLoading]);
 
     useEffect(() => {
         if (venueData) {
@@ -391,38 +312,12 @@ const BookingsPage = () => {
         
         try {
             if (!selectedDetailBooking.docId) {
-                // Preloaded mock database backups can only be simulated locally
-                let simulatedStatus = "";
-                let updatedAmount = selectedDetailBooking.amount;
-                if (actionType === 'accept') simulatedStatus = "Confirmed";
-                else if (actionType === 'decline') simulatedStatus = "Declined";
-                else if (actionType === 'counter') {
-                    simulatedStatus = "Counter Offer";
-                    updatedAmount = parseFloat(counterOfferAmount);
-                }
-
-                // Update standard visual memory state
-                firestoreBookings.map((b) => b); // noop — mock rows only
-                // Also update Elena & Marcus Chen state in the current user view
-                triggerToast(`Simulated! Preloaded mock event updated to ${simulatedStatus}!`);
-                setSelectedDetailBooking(prev => ({
-                    ...prev,
-                    status: simulatedStatus,
-                    amount: updatedAmount,
-                    raw: {
-                        ...prev.raw,
-                        financials: {
-                            ...prev.raw?.financials,
-                            grandTotal: updatedAmount,
-                            remainingBalance: updatedAmount
-                        }
-                    }
-                }));
+                triggerToast("Cannot update this record — no database reference.", "error");
                 return;
             }
 
-            // Real Firestore transaction operation
-            const bRef = doc(db, "bookings", selectedDetailBooking.docId);
+            const collectionName = selectedDetailBooking.isQuotation ? "quotations" : "bookings";
+            const bRef = doc(db, collectionName, selectedDetailBooking.docId);
             
             if (actionType === 'accept') {
                 // Update booking status to Confirmed
@@ -506,46 +401,38 @@ const BookingsPage = () => {
     };
 
     const venueBookings = mergeBookingRows(firestoreBookings, legacyBookings, sheetBookings);
+    const allBookings = [...quotationBookings, ...venueBookings];
 
-    // Merge live quotations (newest first), Firestore walk-ins, sheets, then mock data
-    const allBookings = [...quotationBookings, ...venueBookings, ...mockBookings];
+    const bookingStats = useMemo(() => {
+        const normalize = (s) => (s || "").toLowerCase();
+        const total = allBookings.length;
+        const pending = allBookings.filter((b) => {
+            const st = normalize(b.status);
+            return (
+                st.includes("pending") ||
+                st.includes("quote") ||
+                st === "counter offer"
+            );
+        }).length;
+        const confirmed = allBookings.filter((b) => normalize(b.status) === "confirmed").length;
+        const completed = allBookings.filter((b) => normalize(b.status) === "completed").length;
+        const confirmedPct = total > 0 ? Math.round((confirmed / total) * 100) : 0;
+        return { total, pending, confirmed, completed, confirmedPct };
+    }, [quotationBookings, venueBookings]);
 
-    // Fallback template values
     const pricing = venueData?.pricing || {
-        hallRent: 250000,
-        acCost: 25000,
-        generatorCost: 15000,
-        decorAvailable: true,
-        decorPrice: 120000,
-        soundAvailable: true,
-        soundPrice: 25000,
-        securityAvailable: true,
-        securityPrice: 20000
+        hallRent: 0,
+        acCost: 0,
+        generatorCost: 0,
+        decorAvailable: false,
+        decorPrice: 0,
+        soundAvailable: false,
+        soundPrice: 0,
+        securityAvailable: false,
+        securityPrice: 0,
     };
 
-    const cateringPackages = venueData?.cateringPackages || [
-        {
-            id: 'pkg-1',
-            name: "Barat Luxury Menu",
-            type: "Barat",
-            perPlatePrice: 2850,
-            dishes: ["Chicken Biryani", "Mutton Qorma", "Raita & Salad", "Assorted Naan", "Shahi Kheer"]
-        },
-        {
-            id: 'pkg-2',
-            name: "Mehndi Feast Chicken Menu",
-            type: "Chicken",
-            perPlatePrice: 2000,
-            dishes: ["Chicken Pulao", "Chicken Seekh Kabab", "Fresh Salad", "Mint Raita", "Jalebi"]
-        },
-        {
-            id: 'pkg-3',
-            name: "Royal Mutton Walima Menu",
-            type: "Mutton",
-            perPlatePrice: 4100,
-            dishes: ["Mutton Mandi", "Mutton Karahi", "Hummus & Pita", "Special Salad", "Shahi Tukray"]
-        }
-    ];
+    const cateringPackages = venueData?.cateringPackages || [];
 
     // Live calculation calculations
     const selectedPkg = cateringPackages.find(p => p.id === selectedPkgId) || cateringPackages[0];
@@ -898,7 +785,7 @@ const BookingsPage = () => {
                         </header>
 
                         {/* Booking Summary Stats Cards */}
-                        <BookingStats />
+                        <BookingStats stats={bookingStats} isLoading={venueLoading || isLoading} />
 
                         {/* Booking Filters */}
                         <section className="space-y-6">
@@ -1214,6 +1101,11 @@ const BookingsPage = () => {
                                     </div>
 
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        {cateringPackages.length === 0 && (
+                                            <p className="sm:col-span-2 text-sm font-bold text-on-surface-variant py-6 text-center bg-slate-50 rounded-2xl">
+                                                No catering packages configured. Add menus in My Services first.
+                                            </p>
+                                        )}
                                         {cateringPackages.map((pkg) => {
                                             const isSelected = selectedPkgId === pkg.id;
                                             return (

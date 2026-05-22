@@ -2,18 +2,37 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
-import { db, auth } from "@/firebase";
-import { doc, getDoc, setDoc } from "firebase/firestore";
-import { onAuthStateChanged } from "firebase/auth";
+import { db } from "@/firebase";
+import { doc, onSnapshot, updateDoc } from "firebase/firestore";
+import { useVendorVenue } from "@/hooks/useVendorVenue";
 import VenueCalendarWorkspace from "@/components/vendor/availability/VenueCalendarWorkspace";
+import {
+    EMPTY_PRICING,
+    hydrateVenueFromFirestore,
+    buildVenueSavePayload,
+} from "@/lib/firestore/venueMyServicesState";
 
 const MyServices = () => {
     const [activeTab, setActiveTab] = useState('Overview');
-    const [venueId, setVenueId] = useState("zaydan-banquet-hall");
+    const { venueId, isLoading: venueLoading } = useVendorVenue();
+    const [businessName, setBusinessName] = useState("");
+    const [vendorDescription, setVendorDescription] = useState("");
+    const [streetAddress, setStreetAddress] = useState("");
+    const [city, setCity] = useState("");
+    const [postalCode, setPostalCode] = useState("");
+    const [venueType, setVenueType] = useState("");
+    const [venueCategories, setVenueCategories] = useState([]);
+    const [reviews, setReviews] = useState([]);
+    const [venueStats, setVenueStats] = useState({
+        totalBookings: 0,
+        totalRevenue: 0,
+        averageRating: 0,
+    });
     const [serviceActive, setServiceActive] = useState(true);
-    const [faqOpen, setFaqOpen] = useState({ 0: true });
+    const [faqOpen, setFaqOpen] = useState({});
     const [isSaving, setIsSaving] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
+    const [loadError, setLoadError] = useState(null);
 
     // Toast/Notification Pop-up state
     const [toast, setToast] = useState({ show: false, message: "", type: "success" });
@@ -32,89 +51,19 @@ const MyServices = () => {
     const [modalInputQ, setModalInputQ] = useState("");
     const [modalInputA, setModalInputA] = useState("");
 
-    // FAQs list state
-    const [faqs, setFaqs] = useState([
-        { id: "faq-1", question: "Is catering included in the base venue hire price?", answer: "Catering is not included in the base venue rate. You can choose to add our custom catering package under the Menu tab.", active: true },
-        { id: "faq-2", question: "What is the maximum capacity of the Zaydan Banquet Hall?", answer: "The venue can comfortably accommodate up to 500 guests for banquet seating and up to 700 guests for standing reception setups.", active: true },
-        { id: "faq-3", question: "Do you provide in-house decoration packages?", answer: "Yes! We offer fully custom theme decorations, floral settings, and lighting schemes. Toggle options are available under our Pricing tab.", active: true },
-        { id: "faq-4", question: "Is there a backup power generator available in case of outages?", answer: "Yes, we have high-capacity diesel backup generators that can run all critical lights and air conditioners during utility blackouts.", active: true },
-        { id: "faq-5", question: "Are external catering vendors allowed at the venue?", answer: "Usually, we prefer our in-house premium caterers. However, certified external caterers may be allowed under special facility charges.", active: true }
-    ]);
-
-    // Dynamic Images State
-    const [images, setImages] = useState([
-        { id: "img-1", url: "/Marriage_hall/Zaydan Banquet Hall/2.webp", label: "Zaydan Banquet Hall Main Entrance", isPrimary: true },
-        { id: "img-2", url: "/Marriage_hall/Zaydan Banquet Hall/1.webp", label: "Zaydan Banquet Royal Ballroom", isPrimary: false },
-        { id: "img-3", url: "/Marriage_hall/Zaydan Banquet Hall/3.jpg", label: "Royal floral setting & logistics", isPrimary: false }
-    ]);
-
-    // Description & Features
-    const [features, setFeatures] = useState([
-        "Premium Sound System", "Custom Mood Lighting", "Valet Parking Access", "Integrated Stage", "Full Bar Setup"
-    ]);
+    const [faqs, setFaqs] = useState([]);
+    const [images, setImages] = useState([]);
+    const [features, setFeatures] = useState([]);
     const [newFeature, setNewFeature] = useState("");
-
-    // Pricing Tab State: Core Base Operational Rate Card
-    const [pricing, setPricing] = useState({
-        hallRent: 250000,
-        acCost: 25000,
-        generatorCost: 15000,
-        decorAvailable: true,
-        decorPrice: 120000,
-        soundAvailable: true,
-        soundPrice: 25000,
-        securityAvailable: true,
-        securityPrice: 20000,
-        chickenPrice: 1400,
-        beefPrice: 2000,
-        muttonPrice: 3000,
-        mehndiPrice: 1200
-    });
+    const [pricing, setPricing] = useState({ ...EMPTY_PRICING });
 
     // -----------------------------------------------------------------
     // MENU BUILDER TAB STATE (Template Library & Accordion CRUD)
     // -----------------------------------------------------------------
-    const [activePackageName, setActivePackageName] = useState("Chicken Menu Package");
+    const [activePackageName, setActivePackageName] = useState("");
     const [activePackageStatus, setActivePackageStatus] = useState(true);
-    const [expandedCategories, setExpandedCategories] = useState({ "cat-1": true });
-    const [categories, setCategories] = useState([
-        {
-            id: "cat-1",
-            name: "Main Course",
-            icon: "dinner_dining",
-            items: [
-                { id: "item-1", name: "Chicken Karahi", description: "Wok-fried chicken with ginger, green chillies and traditional spices.", price: 350, active: true },
-                { id: "item-2", name: "Chicken Biryani", description: "Aromatic basmati rice layered with spiced chicken and saffron.", price: 300, active: true },
-                { id: "item-3", name: "Chicken Handi", description: "Boneless chicken cooked in a rich, creamy tomato-based gravy.", price: 320, active: true }
-            ]
-        },
-        {
-            id: "cat-2",
-            name: "Sides & Salads",
-            icon: "bakery_dining",
-            items: [
-                { id: "item-4", name: "Fresh Salad", description: "Seasonal garden fresh vegetables slice cut.", price: 50, active: true },
-                { id: "item-5", name: "Mint Raita", description: "Creamy yogurt infused with fresh mint leaves.", price: 40, active: true }
-            ]
-        },
-        {
-            id: "cat-3",
-            name: "Beverages",
-            icon: "local_bar",
-            items: [
-                { id: "item-6", name: "Soft Drinks", description: "Assorted cold carbonated sodas.", price: 50, active: true },
-                { id: "item-7", name: "Mint Margarita", description: "Refreshing blend of fresh mint, lime, and crushed ice.", price: 90, active: true }
-            ]
-        },
-        {
-            id: "cat-4",
-            name: "Desserts",
-            icon: "icecream",
-            items: [
-                { id: "item-8", name: "Shahi Kheer", description: "Traditional slow-cooked rice pudding topped with almonds.", price: 120, active: true }
-            ]
-        }
-    ]);
+    const [expandedCategories, setExpandedCategories] = useState({});
+    const [categories, setCategories] = useState([]);
 
     // Editing states for categories & items
     const [editingItemId, setEditingItemId] = useState(null);
@@ -124,8 +73,38 @@ const MyServices = () => {
 
     const [editingCatId, setEditingCatId] = useState(null);
     const [editCatName, setEditCatName] = useState("");
-    const [capacity, setCapacity] = useState(500);
+    const [capacity, setCapacity] = useState(0);
     const [cateringPackages, setCateringPackages] = useState([]);
+
+    const applyHydratedVenue = (hydrated) => {
+        setBusinessName(hydrated.businessName);
+        setVendorDescription(hydrated.vendorDescription);
+        setServiceActive(hydrated.serviceActive);
+        setCapacity(hydrated.capacity);
+        setPricing(hydrated.pricing);
+        setCateringPackages(hydrated.cateringPackages);
+        setFeatures(hydrated.features);
+        setFaqs(hydrated.faqs);
+        setImages(hydrated.images);
+        setCategories(hydrated.categories);
+        setActivePackageName(hydrated.activePackageName);
+        setActivePackageStatus(hydrated.activePackageStatus);
+        setStreetAddress(hydrated.streetAddress);
+        setCity(hydrated.city);
+        setPostalCode(hydrated.postalCode);
+        setVenueType(hydrated.venueType);
+        setVenueCategories(hydrated.venueCategories);
+        setReviews(hydrated.reviews);
+        setVenueStats(hydrated.stats);
+        if (hydrated.categories?.length > 0) {
+            setExpandedCategories({ [hydrated.categories[0].id]: true });
+        } else {
+            setExpandedCategories({});
+        }
+        if (hydrated.faqs?.length > 0) {
+            setFaqOpen({ [hydrated.faqs[0].id]: true });
+        }
+    };
 
     // Helper to display gorgeous custom toast notifications
     const triggerToast = (message, type = "success") => {
@@ -306,86 +285,32 @@ const MyServices = () => {
 
     const tabs = ['Overview', 'Images', 'Description', 'Pricing', 'Menu', 'Calendar', 'Location', 'Reviews', 'FAQs'];
 
-    // 1. Resolve logged-in vendor's associated venue document ID dynamically from auth session
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                try {
-                    // Fetch user document from users collection to extract associated venueId
-                    const userDocRef = doc(db, "users", user.uid);
-                    const userDocSnap = await getDoc(userDocRef);
-                    if (userDocSnap.exists()) {
-                        const userData = userDocSnap.data();
-                        if (userData.venueId) {
-                            setVenueId(userData.venueId);
-                        } else {
-                            // Fallback to default zaydan-banquet-hall
-                            setVenueId("zaydan-banquet-hall");
-                        }
-                    } else {
-                        // Fallback to default zaydan-banquet-hall
-                        setVenueId("zaydan-banquet-hall");
-                    }
-                } catch (err) {
-                    console.error("Error resolving vendor multi-tenant context: ", err);
-                    setVenueId("zaydan-banquet-hall");
-                }
-            } else {
-                // If not logged in, we preserve development mode pointing to zaydan-banquet-hall
-                setVenueId("zaydan-banquet-hall");
-            }
-        });
+        if (!venueId || venueLoading) {
+            if (!venueLoading) setIsLoading(false);
+            return;
+        }
 
-        return () => unsubscribe();
-    }, []);
+        setIsLoading(true);
+        setLoadError(null);
 
-    // 2. Load active settings from Firestore dynamically when venueId changes
-    useEffect(() => {
-        const fetchVenueData = async () => {
-            setIsLoading(true);
-            try {
-                const docRef = doc(db, "venues", venueId);
-                const docSnap = await getDoc(docRef);
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    if (data.pricing) setPricing(prev => ({ ...prev, ...data.pricing }));
-                    if (data.cateringPackages) setCateringPackages(data.cateringPackages);
-                    if (data.features) setFeatures(data.features);
-                    if (data.serviceActive !== undefined) setServiceActive(data.serviceActive);
-                    if (data.faqs) setFaqs(data.faqs);
-                    if (data.capacity !== undefined) setCapacity(data.capacity);
-                    if (data.images) {
-                        // Dynamically resolve image folder mapping based on target venue profile
-                        const isZaydan = venueId === "zaydan-banquet-hall";
-                        const isQasar = venueId === "qasar-e-zaydan";
-                        const filtered = data.images.filter(img => 
-                            img.url && (
-                                isZaydan ? img.url.includes("Zaydan Banquet Hall") :
-                                isQasar ? img.url.includes("Qasar E Zaydan") : true
-                            )
-                        );
-                        if (filtered.length > 0) {
-                            setImages(filtered);
-                        }
-                    }
-                    
-                    // Populate loaded Menu Structure if it exists
-                    if (data.menuPackage) {
-                        setActivePackageName(data.menuPackage.name || "Chicken Menu Package");
-                        setActivePackageStatus(data.menuPackage.status !== false);
-                        if (data.menuPackage.categories) {
-                            setCategories(data.menuPackage.categories);
-                        }
-                    }
-                }
-            } catch (err) {
-                console.error("Error fetching Firestore document: ", err);
-            } finally {
+        const docRef = doc(db, "venues", venueId);
+        const unsubscribe = onSnapshot(
+            docRef,
+            (snap) => {
+                const hydrated = hydrateVenueFromFirestore(snap.exists() ? snap.data() : undefined);
+                applyHydratedVenue(hydrated);
+                setIsLoading(false);
+            },
+            (err) => {
+                console.error("[MyServices] venue snapshot error:", err);
+                setLoadError(err.message);
                 setIsLoading(false);
             }
-        };
-        fetchVenueData();
-    }, [venueId]);
+        );
+
+        return () => unsubscribe();
+    }, [venueId, venueLoading]);
 
     const toggleFaq = (faqId) => {
         setFaqOpen(prev => ({ ...prev, [faqId]: !prev[faqId] }));
@@ -404,68 +329,45 @@ const MyServices = () => {
         triggerToast("Amenity feature removed.", "info");
     };
 
-    // Save changes straight to Firebase Firestore
     const handleSaveChanges = async () => {
+        if (!venueId) {
+            triggerToast("No venue linked to your account.", "error");
+            return;
+        }
         setIsSaving(true);
         try {
             const docRef = doc(db, "venues", venueId);
-            
-            // Format first package for estimation calculator dropdown
-            const packageType = activePackageName.includes("Beef") ? "Beef" : 
-                                activePackageName.includes("Mutton") ? "Mutton" : 
-                                activePackageName.includes("Mehndi") ? "Mehndi" : 
-                                "Chicken";
-            const headPrice = packageType === "Beef" ? (pricing.beefPrice || 2000) :
-                              packageType === "Mutton" ? (pricing.muttonPrice || 3000) :
-                              packageType === "Mehndi" ? (pricing.mehndiPrice || 1200) :
-                              (pricing.chickenPrice || 1400);
-
-            // Sync other packages' pricing with current state per-head pricing
-            const syncCateringPackages = cateringPackages.map(pkg => {
-                const pkgType = pkg.type || "";
-                let syncedPrice = pkg.perPlatePrice;
-                if (pkgType === "Chicken") syncedPrice = pricing.chickenPrice || 1400;
-                else if (pkgType === "Beef") syncedPrice = pricing.beefPrice || 2000;
-                else if (pkgType === "Mutton") syncedPrice = pricing.muttonPrice || 3000;
-                else if (pkgType === "Mehndi") syncedPrice = pricing.mehndiPrice || 1200;
-                return { ...pkg, perPlatePrice: syncedPrice };
-            });
-
-            const activePkg = {
-                id: `pkg-${packageType.toLowerCase()}`,
-                name: activePackageName,
-                type: packageType,
-                perPlatePrice: headPrice,
-                categories: categories, // Persist full customized category structure!
-                dishes: categories.flatMap(c => c.items.filter(it => it.active).map(it => it.name)).slice(0, 8)
-            };
-
-            const updatedPackages = [
-                activePkg,
-                ...syncCateringPackages.filter(p => p.type !== packageType && p.id !== 'pkg-active' && p.id !== activePkg.id)
-            ];
-
-            await setDoc(docRef, {
+            const payload = buildVenueSavePayload({
+                businessName,
+                vendorDescription,
                 pricing,
-                menuPackage: {
-                    name: activePackageName,
-                    status: activePackageStatus,
-                    categories: categories
-                },
-                cateringPackages: updatedPackages,
+                activePackageName,
+                activePackageStatus,
+                categories,
+                cateringPackages,
                 features,
                 serviceActive,
                 faqs,
                 images,
-                capacity: parseInt(capacity) || 500,
-                updatedAt: new Date().toISOString()
-            }, { merge: true });
-            
-            setCateringPackages(updatedPackages);
-            triggerToast("Database published successfully!");
+                capacity,
+                streetAddress,
+                city,
+                postalCode,
+                venueType,
+                venueCategories,
+                reviews,
+                venueId,
+            });
+            const { _derivedPackages, ...firestorePayload } = payload;
+            await updateDoc(docRef, firestorePayload);
+            if (_derivedPackages) setCateringPackages(_derivedPackages);
+            triggerToast("Changes saved to your venue profile.");
         } catch (err) {
             console.error("Firestore Write Failed: ", err);
-            triggerToast(`Publish Failed: ${err.code === "permission-denied" ? "Missing or insufficient database permissions. Please log in." : err.message}`, "error");
+            triggerToast(
+                `Publish Failed: ${err.code === "permission-denied" ? "Missing or insufficient database permissions. Please log in." : err.message}`,
+                "error"
+            );
         } finally {
             setIsSaving(false);
         }
@@ -781,11 +683,22 @@ const MyServices = () => {
         return total + catSub;
     }, 0);
 
-    if (isLoading) {
+    if (venueLoading || isLoading) {
         return (
             <div className="min-h-[70vh] flex flex-col items-center justify-center gap-4">
                 <span className="material-symbols-outlined text-5xl text-primary animate-spin">sync</span>
-                <p className="text-sm font-black text-secondary tracking-widest uppercase">Syncing Vendor Datasets...</p>
+                <p className="text-sm font-black text-secondary tracking-widest uppercase">
+                    Loading {venueId ? `venues/${venueId}` : "your venue"}…
+                </p>
+            </div>
+        );
+    }
+
+    if (loadError) {
+        return (
+            <div className="min-h-[50vh] flex flex-col items-center justify-center gap-4 text-center px-6">
+                <span className="material-symbols-outlined text-5xl text-error">error</span>
+                <p className="text-sm font-bold text-on-surface-variant">{loadError}</p>
             </div>
         );
     }
@@ -1098,7 +1011,12 @@ const MyServices = () => {
                         <span className="material-symbols-outlined text-xs text-primary">chevron_right</span>
                         <span className="text-primary">My Services</span>
                     </nav>
-                    <h2 className="text-3xl font-black text-on-surface tracking-tight">Edit Service: <span className="text-secondary">Zaydan Banquet Hall</span></h2>
+                    <h2 className="text-3xl font-black text-on-surface tracking-tight">
+                        Edit Service:{" "}
+                        <span className="text-secondary">
+                            {businessName || venueId?.replace(/-/g, " ") || "Your Venue"}
+                        </span>
+                    </h2>
                 </div>
                 <div className="flex items-center gap-3">
                     <button 
@@ -1120,7 +1038,7 @@ const MyServices = () => {
                         ) : (
                             <>
                                 <span className="material-symbols-outlined text-lg">publish</span>
-                                Publish to Database
+                                Save Changes
                             </>
                         )}
                     </button>
@@ -1177,16 +1095,20 @@ const MyServices = () => {
                         <div className="space-y-4">
                             <div className="flex items-center justify-between">
                                 <span className="text-on-surface-variant font-medium">Total Bookings</span>
-                                <span className="font-black text-primary text-xl">142</span>
+                                <span className="font-black text-primary text-xl">{venueStats.totalBookings || "—"}</span>
                             </div>
                             <div className="flex items-center justify-between">
                                 <span className="text-on-surface-variant font-medium">Total Revenue</span>
-                                <span className="font-black text-secondary text-xl">Rs. 12,450</span>
+                                <span className="font-black text-secondary text-xl">
+                                    {venueStats.totalRevenue ? `Rs. ${venueStats.totalRevenue.toLocaleString()}` : "—"}
+                                </span>
                             </div>
                             <div className="flex items-center justify-between">
                                 <span className="text-on-surface-variant font-medium">Average Rating</span>
                                 <div className="flex items-center gap-1">
-                                    <span className="font-black text-tertiary text-xl">4.9</span>
+                                    <span className="font-black text-tertiary text-xl">
+                                        {venueStats.averageRating ? venueStats.averageRating.toFixed(1) : "—"}
+                                    </span>
                                     <span className="material-symbols-outlined text-tertiary text-sm fill-1">star</span>
                                 </div>
                             </div>
@@ -1254,11 +1176,15 @@ const MyServices = () => {
                                         <div className="space-y-3">
                                             <div>
                                                 <label className="text-[10px] font-bold text-outline uppercase tracking-wider">Service Name</label>
-                                                <p className="font-bold text-secondary text-sm">Zaydan Banquet Hall</p>
+                                                <p className="font-bold text-secondary text-sm">
+                                                    {businessName || "— Add name in Description or Business Settings"}
+                                                </p>
                                             </div>
                                             <div>
                                                 <label className="text-[10px] font-bold text-outline uppercase tracking-wider">Category</label>
-                                                <p className="font-bold text-on-surface text-sm">Luxury Venue</p>
+                                                <p className="font-bold text-on-surface text-sm">
+                                                    {venueType || venueCategories[0] || "—"}
+                                                </p>
                                             </div>
                                         </div>
                                     </div>
@@ -1272,7 +1198,9 @@ const MyServices = () => {
                                         <div className="space-y-3">
                                             <div>
                                                 <label className="text-[10px] font-bold text-outline uppercase tracking-wider">Max Guests</label>
-                                                <p className="font-bold text-secondary text-sm">{capacity} People</p>
+                                                <p className="font-bold text-secondary text-sm">
+                                                    {capacity > 0 ? `${capacity} People` : "— Set capacity"}
+                                                </p>
                                             </div>
                                             <div>
                                                 <label className="text-[10px] font-bold text-outline uppercase tracking-wider">Min Duration</label>
@@ -1348,6 +1276,13 @@ const MyServices = () => {
 
                                 {/* Drag-and-Drop Grid */}
                                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                                    {images.length === 0 && (
+                                        <div className="sm:col-span-2 md:col-span-3 p-10 text-center bg-surface-container-low rounded-3xl border-2 border-dashed border-outline-variant/40">
+                                            <p className="text-sm font-bold text-on-surface-variant">
+                                                No gallery images yet. Add an image URL below to build your public listing cover.
+                                            </p>
+                                        </div>
+                                    )}
                                     {images.map((img, index) => {
                                         const orderLabels = ["1st Image (Primary Cover)", "2nd Image", "3rd Image", "4th Image", "5th Image", "6th Image", "7th Image", "8th Image", "9th Image", "10th Image"];
                                         const orderBadge = orderLabels[index] || `${index + 1}th Image`;
@@ -1464,46 +1399,21 @@ const MyServices = () => {
                                         </div>
                                         
                                         <div className="w-full space-y-2">
-                                            <select 
-                                                onChange={(e) => {
-                                                    if (!e.target.value) return;
-                                                    const selectedUrl = e.target.value;
-                                                    let selectedLabel = "Zaydan Banquet Hall Gallery";
-                                                    if (selectedUrl.includes("1.webp")) {
-                                                        selectedLabel = "Zaydan Banquet Hall Interior";
-                                                    } else if (selectedUrl.includes("2.webp")) {
-                                                        selectedLabel = "Zaydan Banquet Hall Entrance";
-                                                    } else if (selectedUrl.includes("3.jpg")) {
-                                                        selectedLabel = "Zaydan Banquet Hall Stage Decor";
-                                                    }
-                                                    handleAddImage(selectedUrl, selectedLabel);
-                                                    e.target.value = "";
-                                                }}
-                                                className="w-full bg-white border border-slate-200 rounded-full px-4 py-2 font-bold text-[11px] text-on-surface focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
-                                            >
-                                                <option value="">-- Choose Zaydan Banquet Hall Image --</option>
-                                                <option value="/Marriage_hall/Zaydan Banquet Hall/2.webp">Zaydan Banquet Hall 2 (Main Entrance - Yellow Building)</option>
-                                                <option value="/Marriage_hall/Zaydan Banquet Hall/1.webp">Zaydan Banquet Hall 1 (Royal Interior)</option>
-                                                <option value="/Marriage_hall/Zaydan Banquet Hall/3.jpg">Zaydan Banquet Hall 3 (Floral Stage Decor)</option>
-                                            </select>
-
-                                            <div className="flex items-center gap-1.5 justify-center py-1">
-                                                <span className="h-px bg-slate-200 flex-1"></span>
-                                                <span className="text-[9px] uppercase tracking-wider font-black text-outline">or enter custom url</span>
-                                                <span className="h-px bg-slate-200 flex-1"></span>
-                                            </div>
-
-                                            <input 
+                                            <input
                                                 type="text"
-                                                placeholder="https://example.com/image.jpg"
+                                                placeholder="https://example.com/your-hall-photo.jpg"
                                                 onKeyDown={(e) => {
-                                                    if (e.key === 'Enter' && e.target.value.trim()) {
-                                                        handleAddImage(e.target.value.trim(), "Custom Gallery Image");
+                                                    if (e.key === "Enter" && e.target.value.trim()) {
+                                                        const label = businessName
+                                                            ? `${businessName} — Gallery`
+                                                            : "Gallery Image";
+                                                        handleAddImage(e.target.value.trim(), label);
                                                         e.target.value = "";
                                                     }
                                                 }}
                                                 className="w-full bg-white border border-slate-200 rounded-full px-4 py-2 font-bold text-[10px] text-on-surface focus:outline-none focus:ring-1 focus:ring-primary shadow-sm placeholder:text-outline/60"
                                             />
+                                            <p className="text-[9px] text-outline font-bold">Press Enter to add image URL</p>
                                         </div>
                                     </div>
                                 </div>
@@ -1529,8 +1439,10 @@ const MyServices = () => {
                                         <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest px-1">Detailed Description</label>
                                         <textarea 
                                             rows="5" 
+                                            value={vendorDescription}
+                                            onChange={(e) => setVendorDescription(e.target.value)}
+                                            placeholder="Describe your venue for clients browsing Festalytics…"
                                             className="w-full bg-surface-container-low border-2 border-transparent rounded-3xl px-6 py-4 focus:border-primary focus:ring-0 text-on-surface font-bold text-sm resize-none transition-all"
-                                            defaultValue="A luxurious, sun-drenched grand ballroom with high ceilings, massive crystal chandeliers, and expansive floor-to-ceiling windows showing a lush garden view. The room is decorated with vibrant floral arrangements, creating a joyful and energetic atmosphere. Soft, warm natural light spills across polished marble floors, highlighting the elegant table settings."
                                         />
                                     </div>
 
@@ -2182,16 +2094,34 @@ const MyServices = () => {
                                     <div className="space-y-6">
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest px-1">Venue Street Address</label>
-                                            <input type="text" className="w-full bg-surface-container-low border-2 border-transparent rounded-full px-6 py-4 focus:border-primary focus:ring-0 text-on-surface font-bold text-sm" defaultValue="123 Confectionery Lane" />
+                                            <input
+                                                type="text"
+                                                value={streetAddress}
+                                                onChange={(e) => setStreetAddress(e.target.value)}
+                                                placeholder="Street address"
+                                                className="w-full bg-surface-container-low border-2 border-transparent rounded-full px-6 py-4 focus:border-primary focus:ring-0 text-on-surface font-bold text-sm"
+                                            />
                                         </div>
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="space-y-2">
                                                 <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest px-1">City</label>
-                                                <input type="text" className="w-full bg-surface-container-low border-2 border-transparent rounded-full px-6 py-4 focus:border-primary focus:ring-0 text-on-surface font-bold text-sm" defaultValue="Sugarland" />
+                                                <input
+                                                    type="text"
+                                                    value={city}
+                                                    onChange={(e) => setCity(e.target.value)}
+                                                    placeholder="City / area"
+                                                    className="w-full bg-surface-container-low border-2 border-transparent rounded-full px-6 py-4 focus:border-primary focus:ring-0 text-on-surface font-bold text-sm"
+                                                />
                                             </div>
                                             <div className="space-y-2">
                                                 <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest px-1">Postal Code</label>
-                                                <input type="text" className="w-full bg-surface-container-low border-2 border-transparent rounded-full px-6 py-4 focus:border-primary focus:ring-0 text-on-surface font-bold text-sm" defaultValue="77478" />
+                                                <input
+                                                    type="text"
+                                                    value={postalCode}
+                                                    onChange={(e) => setPostalCode(e.target.value)}
+                                                    placeholder="Postal code"
+                                                    className="w-full bg-surface-container-low border-2 border-transparent rounded-full px-6 py-4 focus:border-primary focus:ring-0 text-on-surface font-bold text-sm"
+                                                />
                                             </div>
                                         </div>
                                     </div>
@@ -2226,7 +2156,9 @@ const MyServices = () => {
                                         <p className="text-sm font-medium text-on-surface-variant mt-1">Read and reply to feedback from clients.</p>
                                     </div>
                                     <div className="flex items-center gap-4 bg-surface-container-low px-6 py-3 rounded-full border border-outline-variant/20">
-                                        <span className="font-black text-3xl text-primary">4.9</span>
+                                        <span className="font-black text-3xl text-primary">
+                                            {venueStats.averageRating ? venueStats.averageRating.toFixed(1) : "—"}
+                                        </span>
                                         <div className="text-left">
                                             <div className="flex text-yellow-500">
                                                 {Array.from({ length: 5 }, (_, i) => (
@@ -2238,9 +2170,12 @@ const MyServices = () => {
                                 </div>
 
                                 <div className="space-y-6">
-                                    {[
-                                        { id: 1, name: "Sarah Jenkins", role: "Wedding Bride", rating: 5, date: "Yesterday, 3:15 PM", comment: "Zaydan Banquet Hall was the absolute venue of my dreams! The lighting was magical, the team assisted with every setup request, and our guests were in complete awe of the elegant layout.", avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=256" }
-                                    ].map((rev) => (
+                                    {reviews.length === 0 && (
+                                        <p className="text-sm font-medium text-on-surface-variant text-center py-12">
+                                            No reviews for {businessName || "your venue"} yet. Reviews from clients will appear here.
+                                        </p>
+                                    )}
+                                    {reviews.map((rev) => (
                                         <div key={rev.id} className="p-6 rounded-3xl bg-surface-container-low border border-outline-variant/20 space-y-4">
                                             <div className="flex justify-between items-start flex-col sm:flex-row gap-4">
                                                 <div className="flex items-center gap-4">
@@ -2283,7 +2218,7 @@ const MyServices = () => {
                                             className="px-6 py-3 rounded-full text-xs font-black text-white bg-secondary shadow-lg shadow-secondary/20 hover:scale-105 transition-all flex items-center gap-2 cursor-pointer"
                                         >
                                             <span className="material-symbols-outlined text-sm">cloud_upload</span>
-                                            Publish to Database
+                                            Save Changes
                                         </button>
                                         <button 
                                             onClick={triggerAddFaqModal}

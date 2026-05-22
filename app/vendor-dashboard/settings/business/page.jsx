@@ -1,13 +1,13 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { db, auth } from "@/firebase";
+import { db } from "@/firebase";
 import { doc, getDoc, setDoc } from "firebase/firestore";
-import { onAuthStateChanged } from "firebase/auth";
+import { useVendorVenue } from "@/hooks/useVendorVenue";
 
 const BusinessSettings = () => {
     const [userId, setUserId] = useState(null);
-    const [venueId, setVenueId] = useState("zaydan-banquet-hall");
+    const { venueId, isLoading: venueLoading } = useVendorVenue();
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [toast, setToast] = useState({ show: false, message: "", type: "success" });
@@ -30,27 +30,15 @@ const BusinessSettings = () => {
         setTimeout(() => setToast({ show: false, message: "", type: "success" }), 3500);
     };
 
-    // Load dynamic venue details from Firestore
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                setUserId(user.uid);
-                try {
-                    // Fetch user details to discover their mapped venue slug
-                    const userDocRef = doc(db, "users", user.uid);
-                    const userDocSnap = await getDoc(userDocRef);
-                    let activeVenueId = "zaydan-banquet-hall";
-                    
-                    if (userDocSnap.exists()) {
-                        const userData = userDocSnap.data();
-                        if (userData.venueId) {
-                            activeVenueId = userData.venueId;
-                            setVenueId(userData.venueId);
-                        }
-                    }
+        if (!venueId || venueLoading) {
+            if (!venueLoading) setIsLoading(false);
+            return;
+        }
 
-                    // Fetch the actual venue profile
-                    const venueDocRef = doc(db, "venues", activeVenueId);
+        const loadVenue = async () => {
+            try {
+                    const venueDocRef = doc(db, "venues", venueId);
                     const venueDocSnap = await getDoc(venueDocRef);
                     if (venueDocSnap.exists()) {
                         const venueData = venueDocSnap.data();
@@ -64,46 +52,32 @@ const BusinessSettings = () => {
                         if (venueData.city) setCity(venueData.city);
                         if (venueData.postalCode) setPostalCode(venueData.postalCode);
                         if (venueData.capacity !== undefined) setCapacity(venueData.capacity);
-                    } else {
-                        // Seed database node with elegant defaults
-                        await setDoc(venueDocRef, {
-                            name: "Zaydan Banquet Hall",
-                            regNumber: "REG-9920334-X",
-                            website: "https://festalytics.com/venue/zaydan-banquet-hall",
-                            venueType: "Banquet Hall",
-                            categories: ["BANQUET HALL", "CATERING", "DECOR"],
-                            description: "Premium elegant wedding hall offering customized setups, royal floral decor, and bespoke catering services for all luxurious celebrations.",
-                            streetAddress: "Zaydan Hall Ground, Johar Town Block A",
-                            city: "Lahore",
-                            postalCode: "54000",
-                            capacity: 450,
-                            rating: 4.9,
-                            totalReviews: 18,
-                            createdAt: new Date().toISOString()
-                        });
+                        if (venueData.profile?.hall_name) setVenueName(venueData.profile.hall_name);
+                        if (venueData.profile?.address) setStreetAddress(venueData.profile.address);
+                        if (venueData.profile?.area) setCity(venueData.profile.area);
                     }
                 } catch (err) {
                     console.error("Error fetching business/venue profile: ", err);
                 } finally {
                     setIsLoading(false);
                 }
-            } else {
-                setIsLoading(false);
-            }
-        });
+        };
 
-        return () => unsubscribe();
-    }, []);
+        loadVenue();
+    }, [venueId, venueLoading]);
 
     // Save business changes
     const handleSaveChanges = async () => {
+        if (!venueId) return;
         setIsSaving(true);
         try {
             const venueDocRef = doc(db, "venues", venueId);
+            const websiteUrl = website || `https://festalytics.com/venue/${venueId}`;
             await setDoc(venueDocRef, {
                 name: venueName,
+                hallName: venueName,
                 regNumber: regNumber,
-                website: website,
+                website: websiteUrl,
                 venueType: venueType,
                 categories: categories,
                 description: description,
@@ -111,6 +85,14 @@ const BusinessSettings = () => {
                 city: city,
                 postalCode: postalCode,
                 capacity: parseInt(capacity) || 500,
+                profile: {
+                    hall_name: venueName,
+                    address: streetAddress,
+                    area: city,
+                    phone_1: "",
+                    capacity: parseInt(capacity) || 500,
+                    description: description,
+                },
                 updatedAt: new Date().toISOString()
             }, { merge: true });
 
