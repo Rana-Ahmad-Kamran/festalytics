@@ -1,18 +1,26 @@
 {
   "indexes": [
     {
-      "collectionGroup": "quotations",
+      "collectionGroup": "borrow_requests",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "targetVenueId", "order": "ASCENDING" },
-        { "fieldPath": "status", "order": "ASCENDING" }
+        { "fieldPath": "lenderVenueId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
     },
     {
-      "collectionGroup": "bookings",
+      "collectionGroup": "borrow_requests",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "targetVenueId", "order": "ASCENDING" }
+        { "fieldPath": "borrowerVenueId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "inventory_listings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "isActive", "order": "ASCENDING" }
       ]
     }
   ],

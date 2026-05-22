@@ -11,6 +11,7 @@ const Sidebar = () => {
         { icon: 'dashboard', label: 'Dashboard', href: '/vendor-dashboard' },
         { icon: 'inventory_2', label: 'My Services', href: '/vendor-dashboard/my-services' },
         { icon: 'event_available', label: 'Bookings', href: '/vendor-dashboard/bookings' },
+        { icon: 'handshake', label: 'Borrow Hub', href: '/vendor-dashboard/borrow-hub' },
         { icon: 'calendar_today', label: 'Availability', href: '/vendor-dashboard/availability' },
         { icon: 'chat', label: 'Messages', href: '/vendor-dashboard/messages' },
         { icon: 'monitoring', label: 'Analytics', href: '/vendor-dashboard/analytics' },
@@ -33,7 +34,9 @@ const Sidebar = () => {
 
             <nav className="flex-1 space-y-2 px-4">
                 {navItems.map((item, idx) => {
-                    const isActive = pathname === item.href;
+                    const isActive =
+                        pathname === item.href ||
+                        (item.href !== '/vendor-dashboard' && pathname?.startsWith(item.href));
                     return (
                         <Link key={idx} href={item.href}>
                             <motion.div

@@ -1,5 +1,17 @@
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  setDoc,
+  collection,
+  query,
+  where,
+  getDocs,
+  limit,
+} from "firebase/firestore";
 import { db } from "@/firebase";
+import { ZAYDAN_VENUE_SLUG } from "@/lib/google/zaydanCallingSheet";
+
+export { ZAYDAN_VENUE_SLUG };
 
 const PLACEHOLDER_IMAGE =
   "https://images.unsplash.com/photo-1519167758481-83f550bb49b3?w=800&q=80";
@@ -277,4 +289,108 @@ export async function provisionVendorVenue(userId, businessInput) {
   );
 
   return { venueId: venueSlug };
+}
+
+/**
+ * Links an existing venue document to the vendor user (fixes legacy accounts missing users.venueId).
+ * @param {string} userId
+ * @param {string} venueSlug
+ */
+export async function linkVendorToVenue(userId, venueSlug) {
+  if (!userId || !venueSlug) {
+    throw new Error("User and venue are required.");
+  }
+
+  const venueRef = doc(db, "venues", venueSlug);
+  const venueSnap = await getDoc(venueRef);
+  if (!venueSnap.exists()) {
+    throw new Error(`Venue "${venueSlug}" was not found in Firestore.`);
+  }
+
+  const venue = venueSnap.data();
+  if (venue.ownerId && venue.ownerId !== userId) {
+    throw new Error("This venue is already linked to another vendor account.");
+  }
+
+  await setDoc(
+    venueRef,
+    { ownerId: userId, updatedAt: new Date().toISOString() },
+    { merge: true }
+  );
+  await setDoc(
+    doc(db, "users", userId),
+    {
+      venueId: venueSlug,
+      onboardingComplete: true,
+      updatedAt: new Date().toISOString(),
+    },
+    { merge: true }
+  );
+
+  return { venueId: venueSlug };
+}
+
+/**
+ * Resolves tenant venue for a vendor and self-heals users.venueId when possible.
+ * @param {string} userId
+ * @param {object} [userData]
+ * @returns {Promise<string|null>}
+ */
+export async function resolveVendorVenueId(userId, userData = {}) {
+  if (!userId) return null;
+  if (userData.venueId) return userData.venueId;
+
+  try {
+    const ownedSnap = await getDocs(
+      query(collection(db, "venues"), where("ownerId", "==", userId), limit(5))
+    );
+    if (!ownedSnap.empty) {
+      const slug = ownedSnap.docs[0].id;
+      await setDoc(
+        doc(db, "users", userId),
+        {
+          venueId: slug,
+          onboardingComplete: true,
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+      return slug;
+    }
+  } catch (err) {
+    console.warn("[resolveVendorVenueId] ownerId query failed:", err);
+  }
+
+  try {
+    const zaydanSnap = await getDoc(doc(db, "venues", ZAYDAN_VENUE_SLUG));
+    if (!zaydanSnap.exists()) return null;
+
+    const zaydan = zaydanSnap.data();
+    if (zaydan.ownerId === userId) {
+      await setDoc(
+        doc(db, "users", userId),
+        {
+          venueId: ZAYDAN_VENUE_SLUG,
+          onboardingComplete: true,
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+      return ZAYDAN_VENUE_SLUG;
+    }
+
+    // Legacy: Zaydan ERP existed before per-user venueId. Re-link first vendor account with no tenant.
+    if (
+      userData.role === "vendor" &&
+      !zaydan.ownerId &&
+      !userData.venueId
+    ) {
+      await linkVendorToVenue(userId, ZAYDAN_VENUE_SLUG);
+      return ZAYDAN_VENUE_SLUG;
+    }
+  } catch (err) {
+    console.warn("[resolveVendorVenueId] Zaydan check failed:", err);
+  }
+
+  return null;
 }
