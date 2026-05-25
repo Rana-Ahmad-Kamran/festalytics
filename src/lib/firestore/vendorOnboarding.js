@@ -339,6 +339,7 @@ export async function linkVendorToVenue(userId, venueSlug) {
 export async function resolveVendorVenueId(userId, userData = {}) {
   if (!userId) return null;
   if (userData.venueId) return userData.venueId;
+  if (userData.pendingVendorOnboarding) return null;
 
   try {
     const ownedSnap = await getDocs(

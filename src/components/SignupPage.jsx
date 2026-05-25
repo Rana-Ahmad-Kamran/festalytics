@@ -4,10 +4,15 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FaUser, FaStore, FaGoogle, FaTimes, FaUpload, FaFileImage, FaEnvelopeOpenText } from 'react-icons/fa';
-import { createUserWithEmailAndPassword, deleteUser, GoogleAuthProvider, signInWithPopup, updateProfile } from "firebase/auth";
+import {
+    createUserWithEmailAndPassword,
+    GoogleAuthProvider,
+    sendEmailVerification,
+    signInWithPopup,
+    updateProfile,
+} from "firebase/auth";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from '../firebase';
-import { provisionVendorVenue } from '@/lib/firestore/vendorOnboarding';
 
 const SignupPage = () => {
     const [role, setRole] = useState('user');
@@ -76,47 +81,56 @@ const SignupPage = () => {
             await updateProfile(user, { displayName: fullName });
             await user.reload();
 
-            await setDoc(doc(db, 'users', user.uid), {
-                uid: user.uid,
-                firstName,
-                lastName,
-                fullName,
-                gender,
-                mobileNumber,
-                email,
-                birthday,
-                role,
-                cnic: role === 'vendor' ? cnic : null,
-                createdAt: serverTimestamp()
-            });
-
             if (role === 'vendor') {
-                try {
-                    const { venueId } = await provisionVendorVenue(user.uid, {
-                        hallName,
-                        area,
-                        address: streetAddress,
-                        capacity,
-                        businessPhone: businessPhone || mobileNumber,
-                        mobileNumber,
-                        description: hallDescription,
-                    });
-                    console.log("Venue provisioned:", venueId);
-                    router.push('/vendor-dashboard');
-                } catch (provisionErr) {
-                    console.error("Venue provisioning failed:", provisionErr);
-                    try {
-                        await deleteUser(user);
-                    } catch (deleteErr) {
-                        console.warn("Could not rollback auth user:", deleteErr);
-                    }
-                    alert(
-                        "Account created but venue setup failed: " +
-                            provisionErr.message +
-                            ". Please try signing up again or contact support."
-                    );
-                }
+                const pendingVendorOnboarding = {
+                    hallName,
+                    area,
+                    address: streetAddress,
+                    capacity,
+                    businessPhone: businessPhone || mobileNumber,
+                    mobileNumber,
+                    description: hallDescription,
+                };
+
+                await setDoc(doc(db, 'users', user.uid), {
+                    uid: user.uid,
+                    firstName,
+                    lastName,
+                    fullName,
+                    gender,
+                    mobileNumber,
+                    email,
+                    birthday,
+                    role,
+                    cnic,
+                    pendingVendorOnboarding,
+                    emailVerified: false,
+                    onboardingComplete: false,
+                    venueId: null,
+                    createdAt: serverTimestamp(),
+                    updatedAt: serverTimestamp(),
+                });
+
+                await sendEmailVerification(user, {
+                    url: `${window.location.origin}/verify-email`,
+                });
+
+                router.push('/verify-email');
             } else {
+                await setDoc(doc(db, 'users', user.uid), {
+                    uid: user.uid,
+                    firstName,
+                    lastName,
+                    fullName,
+                    gender,
+                    mobileNumber,
+                    email,
+                    birthday,
+                    role,
+                    cnic: null,
+                    emailVerified: user.emailVerified === true,
+                    createdAt: serverTimestamp()
+                });
                 router.push('/user-dashboard');
             }
         } catch (error) {

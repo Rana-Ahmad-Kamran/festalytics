@@ -44,6 +44,12 @@ export function useVendorVenue() {
         return;
       }
 
+      if (data?.pendingVendorOnboarding && !data?.venueId) {
+        setVenueId(null);
+        setIsLoading(false);
+        return;
+      }
+
       const resolved = await resolveVendorVenueId(currentUser.uid, data || {});
       if (resolved) {
         setVenueId(resolved);

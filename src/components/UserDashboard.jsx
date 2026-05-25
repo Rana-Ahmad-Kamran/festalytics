@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Sparkles, ArrowRight, Calendar, Clock, CheckCircle, Trash2, Search, Plus, Edit3 } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -8,18 +8,50 @@ import DashboardHeader from './DashboardHeader';
 import Footer from './Footer';
 import HallCard from './HallCard';
 import hallsData from '../data/halls.json';
+import { db } from "../firebase";
+import { collection, onSnapshot } from "firebase/firestore";
+import { buildVenueImagePath, mergePublicVenues } from "@/lib/publicVenues";
 
 const UserDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [upcomingEvent, setUpcomingEvent] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [dbVenuesMap, setDbVenuesMap] = useState({});
   const router = useRouter();
 
-  const filteredHalls = hallsData.filter(hall => 
-    (hall.hall_name && hall.hall_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (hall.full_address && hall.full_address.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (hall.area && hall.area.toLowerCase().includes(searchTerm.toLowerCase()))
+  const publicHalls = useMemo(
+    () => mergePublicVenues(hallsData, dbVenuesMap),
+    [dbVenuesMap]
   );
+
+  const filteredHalls = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return publicHalls;
+
+    return publicHalls.filter(hall =>
+      (hall.hall_name && hall.hall_name.toLowerCase().includes(term)) ||
+      (hall.full_address && hall.full_address.toLowerCase().includes(term)) ||
+      (hall.area && hall.area.toLowerCase().includes(term))
+    );
+  }, [publicHalls, searchTerm]);
+
+  useEffect(() => {
+    const unsubscribe = onSnapshot(
+      collection(db, "venues"),
+      (snapshot) => {
+        const next = {};
+        snapshot.forEach((venueDoc) => {
+          next[venueDoc.id] = venueDoc.data();
+        });
+        setDbVenuesMap(next);
+      },
+      (error) => {
+        console.error("Error loading public venues:", error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     // Fetch from localStorage
@@ -158,22 +190,11 @@ const UserDashboard = () => {
 
               {filteredHalls.length > 0 ? (
                 <div className="flex overflow-x-auto gap-6 pb-6 snap-x snap-mandatory scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-transparent">
-                  {filteredHalls.slice(0, 10).map((hall, index) => {
-                    // Normalization & Dynamic Pathing logic as requested
-                    const normalizedName = hall.hall_name ? hall.hall_name.toLowerCase().trim() : '';
-                    
-                    // Use the pre-processed path if available, or generate it dynamically
-                    let dynamicImagePath = `/Marriage_hall/${normalizedName}/1.jpeg`;
-                    if (hall.images && hall.images.length > 0 && !hall.images[0].includes('placeholder')) {
-                      dynamicImagePath = hall.images[0].replace('/Marriage Hall/', '/Marriage_hall/');
-                    }
-
-                    return (
-                      <div key={hall.hall_id || index} className="min-w-[300px] w-[300px] md:min-w-[340px] md:w-[340px] snap-start shrink-0">
-                        <HallCard venue={hall} index={index} imagePath={dynamicImagePath} />
-                      </div>
-                    );
-                  })}
+                  {filteredHalls.slice(0, 10).map((hall, index) => (
+                    <div key={hall.hall_id || index} className="min-w-[300px] w-[300px] md:min-w-[340px] md:w-[340px] snap-start shrink-0">
+                      <HallCard venue={hall} index={index} imagePath={buildVenueImagePath(hall)} />
+                    </div>
+                  ))}
                 </div>
               ) : (
                 <div className="text-center py-10 bg-gray-50 rounded-2xl border border-gray-100">

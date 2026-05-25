@@ -15,6 +15,7 @@ export default function VendorVenueGuard({ children }) {
     error,
     canClaimZaydan,
     reconnectZaydan,
+    user,
     userData,
     zaydanVenueSlug,
   } = useVendorVenue();
@@ -30,6 +31,25 @@ export default function VendorVenueGuard({ children }) {
   }
 
   if (!hasVenue) {
+    if (userData?.pendingVendorOnboarding) {
+      return (
+        <div className="max-w-lg mx-auto mt-16 p-10 bg-white rounded-3xl border border-outline-variant shadow-xl text-center">
+          <span className="material-symbols-outlined text-5xl text-primary mb-4">mark_email_unread</span>
+          <h2 className="text-2xl font-black text-on-surface mb-2">Verify your email</h2>
+          <p className="text-on-surface-variant text-sm mb-6">
+            Your vendor registration is saved, but your venue listing will be created only after
+            email verification.
+          </p>
+          <Link
+            href="/verify-email"
+            className="inline-block w-full px-8 py-3 bg-primary text-white font-black text-xs uppercase tracking-widest rounded-full"
+          >
+            {user?.emailVerified ? "Finish Vendor Setup" : "Verify Email"}
+          </Link>
+        </div>
+      );
+    }
+
     const handleReconnectZaydan = async () => {
       setLinking(true);
       setLinkError(null);

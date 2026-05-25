@@ -1,7 +1,11 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import ServiceDiscovery from "@/components/ServiceDiscovery";
+
+const ServiceDiscovery = dynamic(() => import("@/components/ServiceDiscovery"), {
+  ssr: false,
+});
 
 export default function ServiceDiscoveryPage() {
   return (

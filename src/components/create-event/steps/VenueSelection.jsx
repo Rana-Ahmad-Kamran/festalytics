@@ -1,17 +1,45 @@
-import React, { useState } from 'react';
-import { Search, Star, Check, Users, Store, MapPin, X, Filter } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Search, Star, Check, Users, Store, MapPin, X } from 'lucide-react';
 import hallsData from '../../../data/halls.json';
 import { lahoreAreas } from '../../../data/lahoreAreas';
+import { db } from "@/firebase";
+import { collection, onSnapshot } from "firebase/firestore";
+import { buildVenueImagePath, mergePublicVenues } from "@/lib/publicVenues";
 
 const VenueSelection = ({ eventData, updateFormData, handleBack }) => {
     const [searchQuery, setSearchQuery] = useState('');
     const [visibleCount, setVisibleCount] = useState(12);
+    const [dbVenuesMap, setDbVenuesMap] = useState({});
 
-    const filteredVenues = hallsData.filter(hall => {
-        const matchesSearch = !searchQuery || 
-            (hall.hall_name && hall.hall_name.toLowerCase().includes(searchQuery.toLowerCase())) ||
-            (hall.area && hall.area.toLowerCase().includes(searchQuery.toLowerCase())) ||
-            (hall.full_address && hall.full_address.toLowerCase().includes(searchQuery.toLowerCase()));
+    useEffect(() => {
+        const unsubscribe = onSnapshot(
+            collection(db, "venues"),
+            (snapshot) => {
+                const next = {};
+                snapshot.forEach((venueDoc) => {
+                    next[venueDoc.id] = venueDoc.data();
+                });
+                setDbVenuesMap(next);
+            },
+            (error) => {
+                console.error("Error loading venues for event creation:", error);
+            }
+        );
+
+        return () => unsubscribe();
+    }, []);
+
+    const venues = useMemo(
+        () => mergePublicVenues(hallsData, dbVenuesMap),
+        [dbVenuesMap]
+    );
+
+    const filteredVenues = useMemo(() => venues.filter(hall => {
+        const query = searchQuery.trim().toLowerCase();
+        const matchesSearch = !query ||
+            (hall.hall_name && hall.hall_name.toLowerCase().includes(query)) ||
+            (hall.area && hall.area.toLowerCase().includes(query)) ||
+            (hall.full_address && hall.full_address.toLowerCase().includes(query));
 
         const matchesLocation = !eventData.location || 
             (hall.area && hall.area.toLowerCase() === eventData.location.toLowerCase());
@@ -20,7 +48,7 @@ const VenueSelection = ({ eventData, updateFormData, handleBack }) => {
             (parseInt(hall.capacity_sitting) || 0) >= parseInt(eventData.guestCount);
 
         return matchesSearch && matchesLocation && matchesGuests;
-    });
+    }), [venues, searchQuery, eventData.location, eventData.guestCount]);
 
     const clearFilters = () => {
         updateFormData('location', '');
@@ -117,16 +145,6 @@ const VenueSelection = ({ eventData, updateFormData, handleBack }) => {
                     <>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {filteredVenues.slice(0, visibleCount).map((hall, index) => {
-                                // Dynamic Pathing & Normalization
-                                let imagePath = '/images/placeholder-hall.jpg';
-                                if (hall.images && hall.images.length > 0 && !hall.images[0].includes('placeholder')) {
-                                    // Fix: folder name in public/ is 'Marriage_hall' with underscore
-                                    imagePath = hall.images[0].replace('/Marriage Hall/', '/Marriage_hall/');
-                                } else {
-                                    const hallName = hall.hall_name || '';
-                                    imagePath = `/Marriage_hall/${hallName}/1.jpg`;
-                                }
-
                                 const rating = hall.rating || (Math.random() * (5.0 - 4.0) + 4.0).toFixed(1);
                                 const isSelected = eventData.selectedVenueId === hall.hall_id;
 
@@ -140,7 +158,7 @@ const VenueSelection = ({ eventData, updateFormData, handleBack }) => {
                                             }`}
                                     >
                                         <div className="h-40 relative bg-gray-200 shrink-0">
-                                            <img src={imagePath} alt={hall.hall_name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" onError={(e) => { e.target.onerror = null; e.target.src = 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?q=80&w=2698&auto=format&fit=crop'; }} />
+                                            <img src={buildVenueImagePath(hall)} alt={hall.hall_name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" onError={(e) => { e.target.onerror = null; e.target.src = 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?q=80&w=2698&auto=format&fit=crop'; }} />
                                             {isSelected && (
                                                 <div className="absolute top-2 right-2 bg-[#D6336C] text-white p-1 rounded-full shadow-sm z-10">
                                                     <Check size={16} strokeWidth={3} />

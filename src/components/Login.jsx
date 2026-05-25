@@ -93,6 +93,32 @@ function Login({ onClose }) {
           throw new Error("ROLE_MISMATCH_USER")
         }
 
+        if (loginType === 'vendor') {
+          await user.reload()
+          const freshUser = auth.currentUser || user
+          const hasLinkedVenue = Boolean(userData.venueId)
+
+          if (!freshUser.emailVerified && !hasLinkedVenue) {
+            setSuccess('Please verify your email to finish vendor setup.')
+            setTimeout(() => {
+              setLoading(false)
+              router.push('/verify-email')
+              if (onClose) onClose()
+            }, 800)
+            return
+          }
+
+          if (freshUser.emailVerified && !userData.venueId && userData.pendingVendorOnboarding) {
+            setSuccess('Email verified. Finishing vendor setup...')
+            setTimeout(() => {
+              setLoading(false)
+              router.push('/verify-email')
+              if (onClose) onClose()
+            }, 800)
+            return
+          }
+        }
+
         // Login successful
         setSuccess('Login successful! Redirecting...')
 
