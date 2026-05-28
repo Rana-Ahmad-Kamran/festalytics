@@ -10,6 +10,7 @@ const Sidebar = () => {
     const navItems = [
         { icon: 'dashboard', label: 'Dashboard', href: '/vendor-dashboard' },
         { icon: 'inventory_2', label: 'My Services', href: '/vendor-dashboard/my-services' },
+        { icon: 'inventory', label: 'My Inventory', href: '/vendor-dashboard/my-inventory' },
         { icon: 'event_available', label: 'Bookings', href: '/vendor-dashboard/bookings' },
         { icon: 'handshake', label: 'Borrow Hub', href: '/vendor-dashboard/borrow-hub' },
         { icon: 'calendar_today', label: 'Availability', href: '/vendor-dashboard/availability' },

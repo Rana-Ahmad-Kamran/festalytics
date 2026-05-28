@@ -6,6 +6,8 @@ import {
   LISTING_TYPES,
   generateInventoryItemId,
 } from "@/lib/firestore/borrowHub";
+import { storage } from "@/firebase";
+import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 
 export default function BorrowHubInventoryModal({
   open,
@@ -24,6 +26,60 @@ export default function BorrowHubInventoryModal({
   onDeleteItem,
   isProcessing,
 }) {
+  const [isUploadingImages, setIsUploadingImages] = React.useState(false);
+  const [isUploadingVideo, setIsUploadingVideo] = React.useState(false);
+
+  const uploadAssetImages = async (event) => {
+    const files = Array.from(event.target.files || []);
+    if (!files.length || !itemForm) return;
+
+    setIsUploadingImages(true);
+    try {
+      const uploadedUrls = [];
+      for (const file of files) {
+        const path = `borrow-hub-assets/${itemForm.itemId}/${Date.now()}-${file.name}`;
+        const storageRef = ref(storage, path);
+        await uploadBytes(storageRef, file);
+        uploadedUrls.push(await getDownloadURL(storageRef));
+      }
+
+      setItemForm((prev) => ({
+        ...prev,
+        assetImages: [...(prev.assetImages || []), ...uploadedUrls],
+      }));
+    } catch (error) {
+      console.error("[uploadAssetImages]", error);
+      alert("Image upload failed. Please try again.");
+    } finally {
+      setIsUploadingImages(false);
+      event.target.value = "";
+    }
+  };
+
+  const uploadAssetVideo = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file || !itemForm) return;
+
+    setIsUploadingVideo(true);
+    try {
+      const path = `borrow-hub-assets/${itemForm.itemId}/video-${Date.now()}-${file.name}`;
+      const storageRef = ref(storage, path);
+      await uploadBytes(storageRef, file);
+      const videoUrl = await getDownloadURL(storageRef);
+
+      setItemForm((prev) => ({
+        ...prev,
+        assetVideoUrl: videoUrl,
+      }));
+    } catch (error) {
+      console.error("[uploadAssetVideo]", error);
+      alert("Video upload failed. Please try again.");
+    } finally {
+      setIsUploadingVideo(false);
+      event.target.value = "";
+    }
+  };
+
   if (!open) return null;
 
   return (
@@ -91,11 +147,14 @@ export default function BorrowHubInventoryModal({
                 itemId: generateInventoryItemId(),
                 title: "",
                 category: "power",
-                quantityTotal: 1,
-                quantityAvailable: 1,
+                totalStockQuantity: 1,
+                availableStockQuantity: 1,
                 unit: "units",
                 listingType: "rent",
                 pricePerUnit: 0,
+                assetImages: [],
+                assetVideoUrl: "",
+                b2bContactNumber: hubPhone || "",
                 notes: "",
               })
             }
@@ -140,27 +199,107 @@ export default function BorrowHubInventoryModal({
                 <input
                   type="number"
                   min="0"
-                  placeholder="Total qty"
+                  placeholder="Total stock quantity"
                   className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                  value={itemForm.quantityTotal}
+                  value={itemForm.totalStockQuantity}
                   onChange={(e) =>
                     setItemForm({
                       ...itemForm,
-                      quantityTotal: e.target.value,
-                      quantityAvailable: e.target.value,
+                      totalStockQuantity: e.target.value,
+                      availableStockQuantity: e.target.value,
                     })
                   }
                 />
                 <input
                   type="number"
-                  min="0"
-                  placeholder="Available"
+                  min="1"
+                  placeholder="Available stock quantity"
                   className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                  value={itemForm.quantityAvailable}
-                  onChange={(e) =>
-                    setItemForm({ ...itemForm, quantityAvailable: e.target.value })
-                  }
+                  value={itemForm.availableStockQuantity}
+                  readOnly
                 />
+              </div>
+              <input
+                type="tel"
+                placeholder="B2B contact number"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                value={itemForm.b2bContactNumber || ""}
+                onChange={(e) =>
+                  setItemForm({ ...itemForm, b2bContactNumber: e.target.value })
+                }
+              />
+              <input
+                type="url"
+                placeholder="Asset video URL (optional)"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                value={itemForm.assetVideoUrl || ""}
+                onChange={(e) =>
+                  setItemForm({ ...itemForm, assetVideoUrl: e.target.value })
+                }
+              />
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-slate-500 uppercase">
+                  Asset video (optional)
+                </label>
+                <label className="flex items-center justify-center gap-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 cursor-pointer hover:bg-slate-50 transition-colors">
+                  <span className="material-symbols-outlined text-sm">movie</span>
+                  {isUploadingVideo ? "Uploading video..." : "Upload video file"}
+                  <input
+                    type="file"
+                    accept="video/*"
+                    disabled={isUploadingVideo}
+                    onChange={uploadAssetVideo}
+                    className="hidden"
+                  />
+                </label>
+                {itemForm.assetVideoUrl && (
+                  <div className="rounded-lg border border-slate-200 bg-white p-2">
+                    <video
+                      src={itemForm.assetVideoUrl}
+                      controls
+                      className="w-full h-28 rounded object-cover bg-slate-100"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setItemForm({ ...itemForm, assetVideoUrl: "" })}
+                      className="mt-2 text-xs font-semibold text-rose-600"
+                    >
+                      Remove video
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-slate-500 uppercase">
+                  Asset images
+                </label>
+                <label className="flex items-center justify-center gap-2 w-full rounded-lg border border-indigo-300 bg-white px-3 py-2.5 text-xs font-semibold text-indigo-700 cursor-pointer hover:bg-indigo-50 transition-colors">
+                  <span className="material-symbols-outlined text-sm">upload_file</span>
+                  {isUploadingImages ? "Uploading images..." : "Upload asset images"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    disabled={isUploadingImages}
+                    onChange={uploadAssetImages}
+                    className="hidden"
+                  />
+                </label>
+                {isUploadingImages && (
+                  <p className="text-xs text-indigo-600 font-semibold">Uploading images...</p>
+                )}
+                {(itemForm.assetImages || []).length > 0 && (
+                  <div className="grid grid-cols-4 gap-2">
+                    {itemForm.assetImages.map((url, idx) => (
+                      <img
+                        key={`${url}-${idx}`}
+                        src={url}
+                        alt={`Asset ${idx + 1}`}
+                        className="h-14 w-full object-cover rounded border border-slate-200"
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
               {itemForm.listingType !== "lend" && (
                 <input
@@ -181,9 +320,11 @@ export default function BorrowHubInventoryModal({
                 value={itemForm.notes}
                 onChange={(e) => setItemForm({ ...itemForm, notes: e.target.value })}
               />
-              {!itemForm.title?.trim() && (
+              {(!itemForm.title?.trim() ||
+                !itemForm.b2bContactNumber?.trim() ||
+                !(itemForm.assetImages || []).length) && (
                 <p className="text-xs text-amber-700 font-medium">
-                  Enter a title above to save this item to the network.
+                  Title, B2B contact number and at least one asset image are required.
                 </p>
               )}
               <div className="flex gap-2">
@@ -221,7 +362,9 @@ export default function BorrowHubInventoryModal({
                   <div>
                     <p className="font-semibold text-slate-800 text-sm">{item.title}</p>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      {item.quantityAvailable}/{item.quantityTotal} {item.unit} · {item.listingType}
+                      {item.availableStockQuantity ?? item.quantityAvailable}/
+                      {item.totalStockQuantity ?? item.quantityTotal} {item.unit} ·{" "}
+                      {item.listingType}
                     </p>
                   </div>
                   <div className="flex gap-2 shrink-0">

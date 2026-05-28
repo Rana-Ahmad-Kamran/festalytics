@@ -22,9 +22,13 @@ export const BORROW_STATUS = {
   PENDING: "pending_lender_approval",
   DECLINED: "declined",
   CANCELLED: "cancelled",
-  ACCEPTED: "accepted",
+  APPROVED: "approved",
   IN_USE: "in_use",
-  RETURNED: "returned",
+  RETURNED_SETTLED: "returned_and_settled",
+  ACCEPTED: "approved",
+  RETURNED: "returned_and_settled",
+  LEGACY_ACCEPTED: "accepted",
+  LEGACY_RETURNED: "returned",
 };
 
 export const INVENTORY_CATEGORIES = [
@@ -69,16 +73,29 @@ export function generateInventoryItemId() {
  */
 function buildListingPayload(venueId, item, venueMeta = {}) {
   const profile = venueMeta.profile || {};
+  const availableStockQuantity =
+    Number(item.availableStockQuantity ?? item.quantityAvailable) || 0;
+  const totalStockQuantity =
+    Number(item.totalStockQuantity ?? item.quantityTotal) || 0;
   return {
     lenderVenueId: venueId,
     itemId: item.itemId,
     title: item.title,
     category: item.category || "other",
-    quantityAvailable: Number(item.quantityAvailable) || 0,
-    quantityTotal: Number(item.quantityTotal) || 0,
+    availableStockQuantity,
+    totalStockQuantity,
+    quantityAvailable: availableStockQuantity,
+    quantityTotal: totalStockQuantity,
     listingType: item.listingType || "lend",
     pricePerUnit: item.pricePerUnit ?? null,
     unit: item.unit || "units",
+    assetImages: Array.isArray(item.assetImages) ? item.assetImages : [],
+    assetVideoUrl: item.assetVideoUrl || "",
+    b2bContactNumber:
+      item.b2bContactNumber ||
+      venueMeta.borrowHub?.contactPhone ||
+      profile.phone_1 ||
+      "",
     isActive: item.isActive !== false,
     borrowHubEnabled: venueMeta.borrowHub?.enabled === true,
     lenderDisplayName:
@@ -186,6 +203,14 @@ export async function saveBorrowHubSettings(venueId, borrowHubSettings) {
   );
 }
 
+export async function enableNetworkParticipation(venueId) {
+  if (!venueId) throw new Error("Venue not linked.");
+  await updateDoc(doc(db, "venues", venueId), {
+    isNetworkParticipant: true,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
 /**
  * @param {string} venueId
  * @param {object[]} inventory
@@ -228,7 +253,9 @@ export function listenHubListings(excludeVenueId, callback, onError) {
       .map((d) => ({ id: d.id, ...d.data() }))
       .filter((row) => row.borrowHubEnabled === true)
       .filter((row) => row.lenderVenueId && row.lenderVenueId !== excludeVenueId)
-      .filter((row) => (row.quantityAvailable ?? 0) > 0);
+      .filter(
+        (row) => (row.availableStockQuantity ?? row.quantityAvailable ?? 0) > 0
+      );
 
   return onSnapshot(
     q,
@@ -327,9 +354,11 @@ export async function createBorrowRequest(params) {
     throw new Error("This item is no longer listed on the Borrow Hub.");
   }
   const listing = listingSnap.data();
-  if ((listing.quantityAvailable ?? 0) < qty) {
+  const available =
+    Number(listing.availableStockQuantity ?? listing.quantityAvailable) || 0;
+  if (available < qty) {
     throw new Error(
-      `Only ${listing.quantityAvailable ?? 0} available right now.`
+      `Only ${available} available right now.`
     );
   }
 
@@ -359,7 +388,9 @@ export async function createBorrowRequest(params) {
       notes: eventContext?.notes || "",
     },
     terms: {
-      mode: terms?.mode || listing.listingType === "rent" ? "rent" : "lend",
+      mode:
+        terms?.mode ||
+        (listing.listingType === "rent" ? "rent" : "lend"),
       agreedTotal: terms?.agreedTotal ?? null,
       currency: "PKR",
       returnBy: terms?.returnBy || null,
@@ -427,12 +458,14 @@ export async function acceptBorrowRequest(requestId, lenderVenueId, userId) {
 
     if (!listingSnap.exists()) throw new Error("Listing not found.");
     const listing = listingSnap.data();
-    const available = Number(listing.quantityAvailable) || 0;
+    const available =
+      Number(listing.availableStockQuantity ?? listing.quantityAvailable) || 0;
     if (available < qty) {
       throw new Error(`Insufficient stock. Only ${available} available.`);
     }
 
     tx.update(listingRef, {
+      availableStockQuantity: available - qty,
       quantityAvailable: available - qty,
       updatedAt: new Date().toISOString(),
     });
@@ -441,8 +474,16 @@ export async function acceptBorrowRequest(requestId, lenderVenueId, userId) {
       const venue = venueSnap.data();
       const inventory = (venue.borrowableInventory || []).map((inv) => {
         if (inv.itemId === itemId) {
-          const next = Math.max(0, (Number(inv.quantityAvailable) || 0) - qty);
-          return { ...inv, quantityAvailable: next, updatedAt: new Date().toISOString() };
+          const current = Number(
+            inv.availableStockQuantity ?? inv.quantityAvailable
+          ) || 0;
+          const next = Math.max(0, current - qty);
+          return {
+            ...inv,
+            availableStockQuantity: next,
+            quantityAvailable: next,
+            updatedAt: new Date().toISOString(),
+          };
         }
         return inv;
       });
@@ -460,8 +501,8 @@ export async function acceptBorrowRequest(requestId, lenderVenueId, userId) {
       activityLog: appendLog(req.activityLog, {
         at: new Date().toISOString(),
         actorVenueId: lenderVenueId,
-        action: "accepted",
-        message: "Lender accepted the request.",
+        action: "approved",
+        message: "Lender approved and allocated stock.",
       }),
     });
   });
@@ -540,25 +581,38 @@ async function restoreInventory(tx, lenderVenueId, itemId, qty) {
   const venueRef = doc(db, "venues", lenderVenueId);
 
   const listingSnap = await tx.get(listingRef);
+  const venueSnap = await tx.get(venueRef);
+
   if (listingSnap.exists()) {
     const listing = listingSnap.data();
+    const current =
+      Number(listing.availableStockQuantity ?? listing.quantityAvailable) || 0;
     tx.update(listingRef, {
-      quantityAvailable: (Number(listing.quantityAvailable) || 0) + qty,
+      availableStockQuantity: current + qty,
+      quantityAvailable: current + qty,
       updatedAt: new Date().toISOString(),
     });
   }
 
-  const venueSnap = await tx.get(venueRef);
   if (venueSnap.exists()) {
     const venue = venueSnap.data();
     const inventory = (venue.borrowableInventory || []).map((inv) => {
       if (inv.itemId === itemId) {
-        const total = Number(inv.quantityTotal) || 0;
+        const total =
+          Number(inv.totalStockQuantity ?? inv.quantityTotal) || 0;
+        const current = Number(
+          inv.availableStockQuantity ?? inv.quantityAvailable
+        ) || 0;
         const next = Math.min(
           total || Infinity,
-          (Number(inv.quantityAvailable) || 0) + qty
+          current + qty
         );
-        return { ...inv, quantityAvailable: next, updatedAt: new Date().toISOString() };
+        return {
+          ...inv,
+          availableStockQuantity: next,
+          quantityAvailable: next,
+          updatedAt: new Date().toISOString(),
+        };
       }
       return inv;
     });
@@ -581,8 +635,8 @@ export async function markBorrowRequestInUse(requestId, actorVenueId) {
   const allowed =
     req.borrowerVenueId === actorVenueId || req.lenderVenueId === actorVenueId;
   if (!allowed) throw new Error("Not authorized.");
-  if (req.status !== BORROW_STATUS.ACCEPTED) {
-    throw new Error("Request must be accepted first.");
+  if (![BORROW_STATUS.APPROVED, BORROW_STATUS.LEGACY_ACCEPTED].includes(req.status)) {
+    throw new Error("Request must be approved first.");
   }
 
   await updateDoc(ref, {
@@ -612,27 +666,39 @@ export async function markBorrowRequestReturned(requestId, actorVenueId) {
     const allowed =
       req.borrowerVenueId === actorVenueId || req.lenderVenueId === actorVenueId;
     if (!allowed) throw new Error("Not authorized.");
-    if (req.status !== BORROW_STATUS.IN_USE && req.status !== BORROW_STATUS.ACCEPTED) {
-      throw new Error("Request must be in use or accepted to mark returned.");
+    if (
+      ![
+        BORROW_STATUS.IN_USE,
+        BORROW_STATUS.APPROVED,
+        BORROW_STATUS.LEGACY_ACCEPTED,
+      ].includes(req.status)
+    ) {
+      throw new Error("Request must be in use or approved to mark returned.");
     }
 
     const qty = Number(req.item?.quantityRequested) || 0;
     const itemId = req.item?.itemId;
     const lenderVenueId = req.lenderVenueId;
 
-    if (req.status === BORROW_STATUS.IN_USE || req.status === BORROW_STATUS.ACCEPTED) {
+    if (
+      [
+        BORROW_STATUS.IN_USE,
+        BORROW_STATUS.APPROVED,
+        BORROW_STATUS.LEGACY_ACCEPTED,
+      ].includes(req.status)
+    ) {
       await restoreInventory(tx, lenderVenueId, itemId, qty);
     }
 
     tx.update(requestRef, {
-      status: BORROW_STATUS.RETURNED,
+      status: BORROW_STATUS.RETURNED_SETTLED,
       returnedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
       activityLog: appendLog(req.activityLog, {
         at: new Date().toISOString(),
         actorVenueId,
-        action: "returned",
-        message: "Item marked as safely returned.",
+        action: "returned_and_settled",
+        message: "Item marked returned and stock settled.",
       }),
     });
   });
@@ -646,9 +712,11 @@ export function borrowStatusLabel(status) {
     [BORROW_STATUS.PENDING]: "Pending approval",
     [BORROW_STATUS.DECLINED]: "Declined",
     [BORROW_STATUS.CANCELLED]: "Cancelled",
-    [BORROW_STATUS.ACCEPTED]: "Accepted",
+    [BORROW_STATUS.APPROVED]: "Approved",
     [BORROW_STATUS.IN_USE]: "In use",
-    [BORROW_STATUS.RETURNED]: "Returned",
+    [BORROW_STATUS.RETURNED_SETTLED]: "Returned & settled",
+    [BORROW_STATUS.LEGACY_ACCEPTED]: "Approved",
+    [BORROW_STATUS.LEGACY_RETURNED]: "Returned & settled",
   };
   return map[status] || status;
 }

@@ -6,6 +6,7 @@ import { useBorrowHub } from "@/hooks/useBorrowHub";
 import BorrowHubInventoryModal from "@/components/vendor/borrow-hub/BorrowHubInventoryModal";
 import {
   publishBorrowHubCatalog,
+  enableNetworkParticipation,
   createBorrowRequest,
   acceptBorrowRequest,
   declineBorrowRequest,
@@ -42,6 +43,7 @@ export default function BorrowHubPage() {
   const [reqDate, setReqDate] = useState("");
   const [reqNotes, setReqNotes] = useState("");
   const [reqUrgency, setReqUrgency] = useState("planned");
+  const isNetworkParticipant = hub.isNetworkParticipant;
 
   React.useEffect(() => {
     if (hub.borrowHub) {
@@ -70,7 +72,11 @@ export default function BorrowHubPage() {
   const activeIncoming = useMemo(
     () =>
       hub.incomingRequests.filter((r) =>
-        [BORROW_STATUS.ACCEPTED, BORROW_STATUS.IN_USE].includes(r.status)
+        [
+          BORROW_STATUS.APPROVED,
+          BORROW_STATUS.LEGACY_ACCEPTED,
+          BORROW_STATUS.IN_USE,
+        ].includes(r.status)
       ),
     [hub.incomingRequests]
   );
@@ -124,18 +130,35 @@ export default function BorrowHubPage() {
       showToast("Please enter an item title.", "error");
       return;
     }
+    if (!String(itemForm.b2bContactNumber || "").trim()) {
+      showToast("Please add B2B contact number.", "error");
+      return;
+    }
+    if (!Array.isArray(itemForm.assetImages) || itemForm.assetImages.length === 0) {
+      showToast("Please upload at least one asset image.", "error");
+      return;
+    }
 
     setIsProcessing(true);
     try {
       const next = [...hub.inventory];
       const idx = next.findIndex((i) => i.itemId === itemForm.itemId);
+      const totalStockQuantity = Number(itemForm.totalStockQuantity) || 0;
       const payload = {
         ...itemForm,
         title,
-        quantityTotal: Number(itemForm.quantityTotal) || 0,
-        quantityAvailable: Number(itemForm.quantityAvailable ?? itemForm.quantityTotal) || 0,
+        totalStockQuantity,
+        availableStockQuantity: Number(
+          itemForm.availableStockQuantity ?? totalStockQuantity
+        ) || 0,
+        quantityTotal: totalStockQuantity,
+        quantityAvailable:
+          Number(itemForm.availableStockQuantity ?? totalStockQuantity) || 0,
         pricePerUnit:
           itemForm.listingType === "lend" ? null : Number(itemForm.pricePerUnit) || 0,
+        assetImages: itemForm.assetImages || [],
+        assetVideoUrl: itemForm.assetVideoUrl || "",
+        b2bContactNumber: itemForm.b2bContactNumber || "",
         updatedAt: new Date().toISOString(),
         isActive: true,
       };
@@ -228,6 +251,19 @@ export default function BorrowHubPage() {
     }
   };
 
+  const handleEnableNetworkParticipation = async () => {
+    if (!hub.venueId) return;
+    setIsProcessing(true);
+    try {
+      await enableNetworkParticipation(hub.venueId);
+      showToast("B2B network participation enabled.");
+    } catch (e) {
+      showToast(e.message || "Could not enable network participation.", "error");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   if (hub.isLoading) {
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center bg-slate-50 rounded-xl">
@@ -278,12 +314,38 @@ export default function BorrowHubPage() {
             </span>
           )}
         </button>
-        {!hubEnabled && (
+        {!isNetworkParticipant && (
           <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg">
             Enable network participation in Manage my inventory to list assets.
           </p>
         )}
       </div>
+
+      {!isNetworkParticipant ? (
+        <div className="rounded-2xl border border-violet-200 bg-gradient-to-br from-white via-violet-50 to-indigo-50 shadow-sm p-8 md:p-12">
+          <div className="max-w-2xl">
+            <p className="text-xs font-bold uppercase tracking-wider text-violet-600 mb-2">
+              B2B Network Locked
+            </p>
+            <h2 className="text-2xl font-bold text-slate-900">
+              Enable B2B Network Participation
+            </h2>
+            <p className="text-slate-600 mt-3 text-sm md:text-base">
+              Join the inter-vendor marketplace to publish assets, receive borrow requests, and
+              auto-manage live stock allocations in real time.
+            </p>
+            <button
+              type="button"
+              disabled={isProcessing}
+              onClick={handleEnableNetworkParticipation}
+              className="mt-6 inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-violet-600 text-white font-semibold hover:bg-violet-700 disabled:opacity-50"
+            >
+              <span className="material-symbols-outlined text-lg">bolt</span>
+              Enable B2B Network Participation
+            </button>
+          </div>
+        </div>
+      ) : (
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
         {/* LEFT: Discovery marketplace */}
@@ -396,7 +458,8 @@ export default function BorrowHubPage() {
                       {formatPriceLabel(listing)}
                     </p>
                     <p className="text-xs text-slate-500 mt-1">
-                      {listing.quantityAvailable} {listing.unit} available
+                      {listing.availableStockQuantity ?? listing.quantityAvailable}{" "}
+                      {listing.unit} available
                     </p>
                     <div className="mt-auto pt-4 flex justify-end">
                       <button
@@ -542,10 +605,17 @@ export default function BorrowHubPage() {
                         {req.borrowerDisplayName} — {req.item?.title}
                       </p>
                       <p className="text-[10px] text-emerald-800 font-semibold uppercase">
-                        {req.status === BORROW_STATUS.ACCEPTED ? "Accepted" : "In use"}
+                        {[
+                          BORROW_STATUS.APPROVED,
+                          BORROW_STATUS.LEGACY_ACCEPTED,
+                        ].includes(req.status)
+                          ? "Approved"
+                          : "In use"}
                       </p>
                       <div className="flex flex-wrap gap-2">
-                        {req.status === BORROW_STATUS.ACCEPTED && (
+                        {[BORROW_STATUS.APPROVED, BORROW_STATUS.LEGACY_ACCEPTED].includes(
+                          req.status
+                        ) && (
                           <button
                             type="button"
                             disabled={isProcessing}
@@ -623,11 +693,17 @@ export default function BorrowHubPage() {
                               Cancel request
                             </button>
                           )}
-                          {[BORROW_STATUS.ACCEPTED, BORROW_STATUS.IN_USE].includes(
+                          {[
+                            BORROW_STATUS.APPROVED,
+                            BORROW_STATUS.LEGACY_ACCEPTED,
+                            BORROW_STATUS.IN_USE,
+                          ].includes(
                             req.status
                           ) && (
                             <div className="mt-2 flex gap-3">
-                              {req.status === BORROW_STATUS.ACCEPTED && (
+                              {[BORROW_STATUS.APPROVED, BORROW_STATUS.LEGACY_ACCEPTED].includes(
+                                req.status
+                              ) && (
                                 <button
                                   type="button"
                                   disabled={isProcessing}
@@ -666,6 +742,7 @@ export default function BorrowHubPage() {
           </div>
         </div>
       </div>
+      )}
 
       <BorrowHubInventoryModal
         open={inventoryOpen}
@@ -708,7 +785,10 @@ export default function BorrowHubPage() {
                 <input
                   type="number"
                   min={1}
-                  max={requestModal.quantityAvailable}
+                  max={
+                    requestModal.availableStockQuantity ??
+                    requestModal.quantityAvailable
+                  }
                   value={reqQty}
                   onChange={(e) => setReqQty(e.target.value)}
                   className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"

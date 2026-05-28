@@ -21,6 +21,9 @@ const CATEGORY_IMAGES = {
 };
 
 export function listingImageUrl(listing) {
+  if (Array.isArray(listing.assetImages) && listing.assetImages.length > 0) {
+    return listing.assetImages[0];
+  }
   return CATEGORY_IMAGES[listing.category] || CATEGORY_IMAGES.other;
 }
 
@@ -68,9 +71,11 @@ export function computeBorrowMetrics(incomingRequests, outgoingRequests) {
   let earnedThisMonth = 0;
   for (const r of incomingRequests) {
     const done = [
-      BORROW_STATUS.ACCEPTED,
+      BORROW_STATUS.APPROVED,
+      BORROW_STATUS.LEGACY_ACCEPTED,
       BORROW_STATUS.IN_USE,
-      BORROW_STATUS.RETURNED,
+      BORROW_STATUS.RETURNED_SETTLED,
+      BORROW_STATUS.LEGACY_RETURNED,
     ].includes(r.status);
     if (!done) continue;
     if (toMillis(r.respondedAt || r.createdAt) < monthStart) continue;
@@ -91,7 +96,9 @@ export function computeBorrowMetrics(incomingRequests, outgoingRequests) {
   ).length;
 
   const activeLentOut = incomingRequests.filter((r) =>
-    [BORROW_STATUS.ACCEPTED, BORROW_STATUS.IN_USE].includes(r.status)
+    [BORROW_STATUS.APPROVED, BORROW_STATUS.LEGACY_ACCEPTED, BORROW_STATUS.IN_USE].includes(
+      r.status
+    )
   ).length;
 
   return {
@@ -100,7 +107,7 @@ export function computeBorrowMetrics(incomingRequests, outgoingRequests) {
     activeLentOut,
     pendingIncomingCount: pendingIncoming.length,
     outgoingActiveCount: outgoingRequests.filter((r) =>
-      [BORROW_STATUS.PENDING, BORROW_STATUS.ACCEPTED, BORROW_STATUS.IN_USE].includes(
+      [BORROW_STATUS.PENDING, BORROW_STATUS.APPROVED, BORROW_STATUS.LEGACY_ACCEPTED, BORROW_STATUS.IN_USE].includes(
         r.status
       )
     ).length,
@@ -114,13 +121,15 @@ export function outgoingStatusPill(status) {
         label: "Awaiting Peer Approval",
         className: "bg-amber-100 text-amber-800 border-amber-200",
       };
-    case BORROW_STATUS.ACCEPTED:
+    case BORROW_STATUS.APPROVED:
+    case BORROW_STATUS.LEGACY_ACCEPTED:
     case BORROW_STATUS.IN_USE:
       return {
         label: "Dispatched / Active in Use",
         className: "bg-emerald-100 text-emerald-800 border-emerald-200",
       };
-    case BORROW_STATUS.RETURNED:
+    case BORROW_STATUS.RETURNED_SETTLED:
+    case BORROW_STATUS.LEGACY_RETURNED:
       return {
         label: "Returned",
         className: "bg-slate-100 text-slate-700 border-slate-200",

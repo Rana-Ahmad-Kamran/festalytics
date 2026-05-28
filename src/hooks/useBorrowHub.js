@@ -109,5 +109,6 @@ export function useBorrowHub() {
     pendingIncomingCount,
     venueDisplayName,
     ownerId: venueData?.ownerId || userId,
+    isNetworkParticipant: venueData?.isNetworkParticipant === true,
   };
 }
