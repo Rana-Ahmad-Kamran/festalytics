@@ -12,9 +12,15 @@ const ChatThread = ({
   error = null,
   sending = false,
   onSendMessage,
+  onArchive,
+  onUnarchive,
+  onDelete,
+  actionPending = false,
 }) => {
   const [inputText, setInputText] = useState("");
+  const [showMenu, setShowMenu] = useState(false);
   const scrollRef = useRef(null);
+  const isArchived = Boolean(activeThread?.archived);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -76,16 +82,86 @@ const ChatThread = ({
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {["archive", "delete", "more_vert"].map((icon) => (
+        <div className="flex items-center gap-1 relative">
+          {isArchived ? (
             <button
-              key={icon}
               type="button"
-              className="p-3 text-outline hover:text-primary hover:bg-primary-fixed rounded-full transition-all border-0 bg-transparent cursor-pointer"
+              disabled={actionPending}
+              onClick={() => onUnarchive?.()}
+              title="Move back to inbox"
+              className="p-3 text-outline hover:text-primary hover:bg-primary-fixed rounded-full transition-all border-0 bg-transparent cursor-pointer disabled:opacity-50"
             >
-              <span className="material-symbols-outlined text-xl">{icon}</span>
+              <span className="material-symbols-outlined text-xl">unarchive</span>
             </button>
-          ))}
+          ) : (
+            <button
+              type="button"
+              disabled={actionPending}
+              onClick={() => onArchive?.()}
+              title="Archive conversation"
+              className="p-3 text-outline hover:text-primary hover:bg-primary-fixed rounded-full transition-all border-0 bg-transparent cursor-pointer disabled:opacity-50"
+            >
+              <span className="material-symbols-outlined text-xl">archive</span>
+            </button>
+          )}
+          <button
+            type="button"
+            disabled={actionPending}
+            onClick={() => onDelete?.()}
+            title="Archive and remove from active inbox"
+            className="p-3 text-outline hover:text-rose-600 hover:bg-rose-50 rounded-full transition-all border-0 bg-transparent cursor-pointer disabled:opacity-50"
+          >
+            <span className="material-symbols-outlined text-xl">delete</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowMenu((v) => !v)}
+            className="p-3 text-outline hover:text-primary hover:bg-primary-fixed rounded-full transition-all border-0 bg-transparent cursor-pointer"
+          >
+            <span className="material-symbols-outlined text-xl">more_vert</span>
+          </button>
+          {showMenu && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
+              <div className="absolute right-0 top-full mt-1 z-50 w-52 bg-white border border-outline-variant rounded-2xl shadow-xl py-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMenu(false);
+                    if (activeThread?.bookingRef) {
+                      window.open(`/vendor-dashboard/bookings`, "_self");
+                    }
+                  }}
+                  className="w-full px-4 py-3 text-left text-sm font-bold text-on-surface hover:bg-surface-container-low border-0 bg-transparent cursor-pointer"
+                >
+                  View in bookings
+                </button>
+                {isArchived ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowMenu(false);
+                      onUnarchive?.();
+                    }}
+                    className="w-full px-4 py-3 text-left text-sm font-bold text-primary hover:bg-primary-fixed border-0 bg-transparent cursor-pointer"
+                  >
+                    Restore to inbox
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowMenu(false);
+                      onArchive?.();
+                    }}
+                    className="w-full px-4 py-3 text-left text-sm font-bold text-on-surface hover:bg-surface-container-low border-0 bg-transparent cursor-pointer"
+                  >
+                    Archive conversation
+                  </button>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </div>
 

@@ -21,6 +21,7 @@ export default function CustomerVenueChat({ venueSlug, venueName }) {
   const [bootstrapping, setBootstrapping] = useState(false);
   const [inputText, setInputText] = useState("");
   const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState(null);
   const scrollRef = useRef(null);
 
   useEffect(() => {
@@ -72,19 +73,34 @@ export default function CustomerVenueChat({ venueSlug, venueName }) {
   }, [messages, open]);
 
   const handleSend = async () => {
-    if (!chatId || !user?.uid || !inputText.trim() || sending) return;
-    const text = inputText;
+    if (!user?.uid || !venueSlug || !inputText.trim() || sending) return;
+
+    const text = inputText.trim();
     setInputText("");
     setSending(true);
+    setSendError(null);
+
     try {
+      const id = chatId || buildChatId(venueSlug, user.uid);
+      await ensureChatRoom({
+        chatId: id,
+        venueSlug,
+        customerId: user.uid,
+        customerName: user.displayName || user.email || "Customer",
+        subject: `${venueName || "Venue"} inquiry`,
+      });
+      if (!chatId) setChatId(id);
+
       await sendTextMessage({
-        chatId,
+        chatId: id,
         senderId: user.uid,
         text,
         senderRole: "customer",
       });
     } catch (err) {
       console.error("[CustomerVenueChat] send:", err);
+      setSendError(err.message || "Could not send message. Please try again.");
+      setInputText(text);
     } finally {
       setSending(false);
     }
@@ -153,8 +169,10 @@ export default function CustomerVenueChat({ venueSlug, venueName }) {
                       Loading chat…
                     </p>
                   ) : null}
-                  {error && (
-                    <p className="text-center text-xs font-bold text-rose-600">{error}</p>
+                  {(error || sendError) && (
+                    <p className="text-center text-xs font-bold text-rose-600 px-2">
+                      {sendError || error}
+                    </p>
                   )}
                   {!loading && messages.length === 0 && (
                     <p className="text-center text-xs text-outline">

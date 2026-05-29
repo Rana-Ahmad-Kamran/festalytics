@@ -7,7 +7,6 @@ import {
   addDoc,
   query,
   where,
-  orderBy,
   onSnapshot,
   serverTimestamp,
   increment,
@@ -77,19 +76,25 @@ export function listenVendorInbox(venueSlug, callback, onError) {
  * @param {(messages: object[]) => void} callback
  * @param {(err: Error) => void} [onError]
  */
+function sortMessagesChronologically(messages) {
+  return [...messages].sort((a, b) => {
+    const ta = timestampToMs(a.timestamp);
+    const tb = timestampToMs(b.timestamp);
+    if (ta !== tb) return ta - tb;
+    return String(a.id).localeCompare(String(b.id));
+  });
+}
+
 export function listenChatMessages(chatId, callback, onError) {
   if (!chatId) return () => {};
 
-  const messagesQuery = query(
-    collection(db, CHATS_COLLECTION, chatId, "messages"),
-    orderBy("timestamp", "asc")
-  );
+  const messagesRef = collection(db, CHATS_COLLECTION, chatId, "messages");
 
   return onSnapshot(
-    messagesQuery,
+    messagesRef,
     (snap) => {
       const messages = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      callback(messages);
+      callback(sortMessagesChronologically(messages));
     },
     (err) => {
       console.error("[listenChatMessages]", err);
@@ -127,7 +132,18 @@ export async function ensureChatRoom({
       lastMessageTimestamp: serverTimestamp(),
       unreadByVendor: 0,
       unreadByCustomer: 0,
+      archivedByVendor: false,
+      hasPendingCounterOffer: false,
+      lastSenderRole: null,
       createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  } else {
+    await updateDoc(ref, {
+      venueSlug,
+      customerId,
+      customerName: customerName || snap.data().customerName || "Customer",
+      ...(bookingRef ? { bookingRef } : {}),
       updatedAt: serverTimestamp(),
     });
   }
@@ -155,6 +171,7 @@ export async function sendTextMessage({
     await addDoc(collection(db, CHATS_COLLECTION, chatId, "messages"), {
       type: "text",
       senderId,
+      senderRole: senderRole || "customer",
       text: trimmed,
       timestamp: serverTimestamp(),
     });
@@ -163,6 +180,7 @@ export async function sendTextMessage({
       lastMessage: trimmed.slice(0, 200),
       lastMessageTimestamp: serverTimestamp(),
       updatedAt: serverTimestamp(),
+      lastSenderRole: senderRole === "vendor" ? "vendor" : "customer",
     };
 
     if (senderRole === "vendor") {
@@ -204,6 +222,7 @@ export async function sendCounterOfferMessage({
     await addDoc(collection(db, CHATS_COLLECTION, chatId, "messages"), {
       type: "counter_offer",
       senderId: venueSlug,
+      senderRole: "vendor",
       text: preview,
       counterOffer: payload,
       timestamp: serverTimestamp(),
@@ -214,6 +233,8 @@ export async function sendCounterOfferMessage({
       lastMessageTimestamp: serverTimestamp(),
       unreadByCustomer: increment(1),
       unreadByVendor: 0,
+      hasPendingCounterOffer: true,
+      lastSenderRole: "vendor",
       updatedAt: serverTimestamp(),
     });
   } catch (error) {
@@ -270,6 +291,8 @@ export async function respondToCounterOffer({
       lastMessageTimestamp: serverTimestamp(),
       unreadByVendor: increment(1),
       unreadByCustomer: 0,
+      hasPendingCounterOffer: false,
+      lastSenderRole: "system",
       updatedAt: serverTimestamp(),
     });
   } catch (error) {
@@ -287,6 +310,20 @@ export async function markVendorInboxRead(chatId) {
     });
   } catch (error) {
     console.error("[markVendorInboxRead]", error);
+    throw error;
+  }
+}
+
+export async function setChatArchived(chatId, archived = true) {
+  if (!chatId) return;
+  try {
+    await updateDoc(doc(db, CHATS_COLLECTION, chatId), {
+      archivedByVendor: Boolean(archived),
+      updatedAt: serverTimestamp(),
+      ...(archived ? { unreadByVendor: 0 } : {}),
+    });
+  } catch (error) {
+    console.error("[setChatArchived]", error);
     throw error;
   }
 }

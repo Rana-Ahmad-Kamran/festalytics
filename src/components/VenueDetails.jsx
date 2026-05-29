@@ -6,7 +6,7 @@ import DashboardHeader from './DashboardHeader';
 import Footer from './Footer';
 import hallsData from '../data/halls.json';
 import { db, auth } from "../firebase";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
 import { submitCustomerQuotation } from "@/lib/firestore/quotations";
 import {
   appendZaydanCallingRow,
@@ -17,6 +17,7 @@ import PublicVenueCalendar from "@/components/venue/PublicVenueCalendar";
 import { getDateStatus } from "@/lib/firestore/venueCalendar";
 import { usePublicVenueCalendar } from "@/hooks/usePublicVenueCalendar";
 import CustomerVenueChat from "@/components/chat/CustomerVenueChat";
+import VenueFaqSection from "@/components/venue/VenueFaqSection";
 
 const VenueDetails = () => {
   const { id } = useParams();
@@ -134,98 +135,140 @@ const VenueDetails = () => {
   useEffect(() => {
     if (!venue) return;
 
-    const fetchDbVenue = async () => {
-      try {
-        const docId = getFirestoreDocId(venue);
-        const docRef = doc(db, "venues", docId);
-        const docSnap = await getDoc(docRef);
-        
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          setDbVenue(data);
-          if (data.cateringPackages && data.cateringPackages.length > 0) {
-            setSelectedPkgId(data.cateringPackages[0].id);
-          }
-        } else {
-          // Document does not exist in Firestore! Auto-seed it with best-practice default data from local asset definitions
-          const chickenPrice = parseInt(venue.one_dish_chicken) || 2000;
-          const beefPrice = parseInt(venue.one_dish_beef) || 2850;
-          const muttonPrice = parseInt(venue.one_dish_mutton) || 4100;
+    let cancelled = false;
+    const docId = getFirestoreDocId(venue);
+    if (!docId) {
+      setLoadingDb(false);
+      return undefined;
+    }
 
-          const defaultData = {
-            pricing: {
-              hallRent: (() => {
-                if (!venue.price_range) return 250000;
-                const numbers = venue.price_range.replace(/,/g, '').match(/\d+/g);
-                if (numbers && numbers.length > 0) {
-                  const val = parseInt(numbers[0]);
-                  return val > 20000 ? val : 250000;
-                }
-                return 250000;
-              })(),
-              acCost: 25000,
-              generatorCost: 15000,
-              decorAvailable: true,
-              decorPrice: 120000,
-              soundAvailable: true,
-              soundPrice: 25000,
-              securityAvailable: true,
-              securityPrice: 20000
-            },
-            cateringPackages: [
-              {
-                id: 'pkg-1',
-                name: "Barat Luxury Beef Menu",
-                type: "Beef",
-                perPlatePrice: beefPrice,
-                dishes: ["Beef Biryani", "Beef Qorma", "Raita & Salad", "Assorted Naan", "Shahi Kheer"]
-              },
-              {
-                id: 'pkg-2',
-                name: "Mehndi Feast Chicken Menu",
-                type: "Chicken",
-                perPlatePrice: chickenPrice,
-                dishes: ["Chicken Pulao", "Chicken Seekh Kabab", "Fresh Salad", "Mint Raita", "Jalebi"]
-              },
-              {
-                id: 'pkg-3',
-                name: "Royal Mutton Walima Menu",
-                type: "Mutton",
-                perPlatePrice: muttonPrice,
-                dishes: ["Mutton Mandi", "Mutton Karahi", "Hummus & Pita", "Special Salad", "Shahi Tukray"]
-              }
-            ],
-            images: venue.images ? venue.images.map((img, idx) => ({
+    const docRef = doc(db, "venues", docId);
+
+    const applyVenueData = (data) => {
+      if (cancelled || !data) return;
+      setDbVenue(data);
+      if (data.cateringPackages?.length > 0) {
+        setSelectedPkgId((prev) => {
+          const stillValid = data.cateringPackages.some((p) => p.id === prev);
+          return stillValid ? prev : data.cateringPackages[0].id;
+        });
+      }
+      setLoadingDb(false);
+    };
+
+    const seedDefaultVenue = async () => {
+      const chickenPrice = parseInt(venue.one_dish_chicken, 10) || 2000;
+      const beefPrice = parseInt(venue.one_dish_beef, 10) || 2850;
+      const muttonPrice = parseInt(venue.one_dish_mutton, 10) || 4100;
+
+      const defaultData = {
+        pricing: {
+          hallRent: (() => {
+            if (!venue.price_range) return 250000;
+            const numbers = venue.price_range.replace(/,/g, "").match(/\d+/g);
+            if (numbers?.length > 0) {
+              const val = parseInt(numbers[0], 10);
+              return val > 20000 ? val : 250000;
+            }
+            return 250000;
+          })(),
+          acCost: 25000,
+          generatorCost: 15000,
+          decorAvailable: true,
+          decorPrice: 120000,
+          soundAvailable: true,
+          soundPrice: 25000,
+          securityAvailable: true,
+          securityPrice: 20000,
+        },
+        cateringPackages: [
+          {
+            id: "pkg-1",
+            name: "Barat Luxury Beef Menu",
+            type: "Beef",
+            perPlatePrice: beefPrice,
+            dishes: ["Beef Biryani", "Beef Qorma", "Raita & Salad", "Assorted Naan", "Shahi Kheer"],
+          },
+          {
+            id: "pkg-2",
+            name: "Mehndi Feast Chicken Menu",
+            type: "Chicken",
+            perPlatePrice: chickenPrice,
+            dishes: ["Chicken Pulao", "Chicken Seekh Kabab", "Fresh Salad", "Mint Raita", "Jalebi"],
+          },
+          {
+            id: "pkg-3",
+            name: "Royal Mutton Walima Menu",
+            type: "Mutton",
+            perPlatePrice: muttonPrice,
+            dishes: ["Mutton Mandi", "Mutton Karahi", "Hummus & Pita", "Special Salad", "Shahi Tukray"],
+          },
+        ],
+        images: venue.images
+          ? venue.images.map((img, idx) => ({
               id: `img-${idx + 1}`,
-              url: decodeURIComponent(img.replace('/Marriage Hall/', '/Marriage_hall/')),
+              url: decodeURIComponent(img.replace("/Marriage Hall/", "/Marriage_hall/")),
               label: `${venue.hall_name} View ${idx + 1}`,
-              isPrimary: idx === 0
-            })) : [],
-            features: [
-              "Premium Sound System", "Custom Mood Lighting", "Valet Parking Access", "Integrated Stage", "Full Bar Setup"
-            ],
-            faqs: [
-              { id: "faq-1", question: `Is catering included in the base venue hire price of ${venue.hall_name}?`, answer: "Catering is not included in the base venue rate. You can choose to add our custom catering package under the Menu tab.", active: true },
-              { id: "faq-2", question: `What is the maximum capacity of the ${venue.hall_name}?`, answer: "The venue can comfortably accommodate up to 500 guests for banquet seating and up to 700 guests for standing reception setups.", active: true }
-            ],
-            serviceActive: true,
-            updatedAt: new Date().toISOString()
-          };
-          
-          await setDoc(docRef, defaultData);
-          setDbVenue(defaultData);
-          if (defaultData.cateringPackages && defaultData.cateringPackages.length > 0) {
-            setSelectedPkgId(defaultData.cateringPackages[0].id);
-          }
-        }
+              isPrimary: idx === 0,
+            }))
+          : [],
+        features: [
+          "Premium Sound System",
+          "Custom Mood Lighting",
+          "Valet Parking Access",
+          "Integrated Stage",
+          "Full Bar Setup",
+        ],
+        faqs: [
+          {
+            id: "faq-1",
+            question: `Is catering included in the base venue hire price of ${venue.hall_name}?`,
+            answer:
+              "Catering is not included in the base venue rate. You can choose to add our custom catering package when requesting a quote.",
+            active: true,
+          },
+          {
+            id: "faq-2",
+            question: `What is the maximum capacity of ${venue.hall_name}?`,
+            answer: `The venue can comfortably accommodate up to ${venue.capacity_sitting || 500} guests for banquet seating.`,
+            active: true,
+          },
+        ],
+        serviceActive: true,
+        updatedAt: new Date().toISOString(),
+      };
+
+      try {
+        await setDoc(docRef, defaultData);
+        applyVenueData(defaultData);
       } catch (err) {
-        console.error("Error reading/seeding Firestore in client: ", err);
-      } finally {
+        console.error("Error seeding Firestore venue:", err);
         setLoadingDb(false);
       }
     };
-    
-    fetchDbVenue();
+
+    setLoadingDb(true);
+
+    const unsubscribe = onSnapshot(
+      docRef,
+      async (snap) => {
+        if (cancelled) return;
+        if (snap.exists()) {
+          applyVenueData(snap.data());
+        } else {
+          await seedDefaultVenue();
+        }
+      },
+      (err) => {
+        console.error("Venue snapshot error:", err);
+        if (!cancelled) setLoadingDb(false);
+      }
+    );
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, [venue]);
 
   const maxCapacity = dbVenue?.capacity || (venue?.capacity_sitting ? parseInt(venue.capacity_sitting) : 500) || 500;
@@ -735,6 +778,8 @@ const VenueDetails = () => {
               onSelectDate={setEventDate}
             />
 
+            <VenueFaqSection faqs={dbVenue?.faqs} />
+
             {/* Facilities Grid */}
             <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-gray-100">
               <h2 className="text-xl font-bold text-gray-900 mb-6">Facilities & Amenities</h2>
@@ -1232,7 +1277,7 @@ const VenueDetails = () => {
       </AnimatePresence>
 
       <CustomerVenueChat
-        venueSlug={id}
+        venueSlug={venueSlug}
         venueName={venue?.hall_name || venue?.name}
       />
     </div>

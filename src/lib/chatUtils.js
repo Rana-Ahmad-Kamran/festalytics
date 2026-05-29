@@ -53,6 +53,10 @@ export function counterOfferStatusLabel(status) {
 }
 
 export function mapChatRoomToSidebarThread(room) {
+  const unread = Number(room.unreadByVendor || 0) > 0;
+  const hasPendingCounterOffer = Boolean(room.hasPendingCounterOffer);
+  const lastSenderRole = room.lastSenderRole || null;
+
   return {
     id: room.id,
     chatId: room.id,
@@ -61,7 +65,12 @@ export function mapChatRoomToSidebarThread(room) {
     lastMessage: room.lastMessage || "No messages yet",
     time: formatChatRelativeTime(room.lastMessageTimestamp),
     subject: room.subject || "Event inquiry",
-    unread: Number(room.unreadByVendor || 0) > 0,
+    unread,
+    archived: Boolean(room.archivedByVendor),
+    hasPendingCounterOffer,
+    lastSenderRole,
+    pendingQuery:
+      hasPendingCounterOffer || (unread && lastSenderRole === "customer"),
     customerId: room.customerId,
     venueSlug: room.venueSlug,
     bookingRef: room.bookingRef || null,
@@ -69,8 +78,12 @@ export function mapChatRoomToSidebarThread(room) {
 }
 
 export function mapFirestoreMessageToUi(msg, { venueSlug, customerName, customerAvatar }) {
-  const isVendor = msg.senderId === venueSlug;
-  const isSystem = msg.type === "system";
+  const isSystem = msg.type === "system" || msg.senderId === "system";
+  const isVendor =
+    !isSystem &&
+    (msg.senderId === venueSlug ||
+      msg.senderRole === "vendor" ||
+      msg.type === "counter_offer");
 
   if (msg.type === "counter_offer") {
     return {
