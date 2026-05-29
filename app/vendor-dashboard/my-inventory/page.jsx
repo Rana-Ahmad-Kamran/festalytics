@@ -96,7 +96,8 @@ export default function MyInventoryPage() {
       <header className="space-y-1">
         <h1 className="text-3xl font-bold text-slate-900">Inventory Catalog Overview</h1>
         <p className="text-sm text-slate-600">
-          Manage your multi-tenant B2B asset catalog, stock status, and commercial listing quality.
+          Manage your B2B asset catalog. Published items appear on Borrow Hub for other vendors
+          when network participation is enabled.
         </p>
       </header>
 

@@ -2,11 +2,14 @@
 
 import React, { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { arrayUnion, doc, updateDoc } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytesResumable } from "firebase/storage";
-import { db, storage } from "@/firebase";
+import { storage } from "@/firebase";
 import { useVendorVenue } from "@/hooks/useVendorVenue";
-import { generateInventoryItemId, INVENTORY_CATEGORIES } from "@/lib/firestore/borrowHub";
+import {
+  appendBorrowableInventoryItem,
+  generateInventoryItemId,
+  INVENTORY_CATEGORIES,
+} from "@/lib/firestore/borrowHub";
 
 export default function AddInventoryAssetPage() {
   const router = useRouter();
@@ -223,10 +226,7 @@ export default function AddInventoryAssetPage() {
     setSaving(true);
     setError("");
     try {
-      await updateDoc(doc(db, "venues", currentVendorSlug), {
-        borrowableInventory: arrayUnion(payload),
-        updatedAt: new Date().toISOString(),
-      });
+      await appendBorrowableInventoryItem(currentVendorSlug, payload);
       router.push("/vendor-dashboard/my-inventory");
     } catch (submitError) {
       setError(submitError.message || "Failed to add inventory asset.");
@@ -291,7 +291,12 @@ export default function AddInventoryAssetPage() {
       </section>
 
       <section className="rounded-xl border border-slate-200/80 bg-white p-6 space-y-4">
-        <h2 className="text-lg font-semibold text-slate-900">Media Upload Panel</h2>
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900">Media Upload Panel</h2>
+          <p className="text-sm text-slate-500 mt-1">
+            Optional — you can publish without images and add media later.
+          </p>
+        </div>
         <div
           onDragOver={(event) => event.preventDefault()}
           onDrop={handleDrop}
@@ -411,7 +416,7 @@ export default function AddInventoryAssetPage() {
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="submit"
-          disabled={!canSubmit || saving || uploading}
+          disabled={!canSubmit || saving}
           className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
         >
           <span className="material-symbols-outlined text-base">save</span>

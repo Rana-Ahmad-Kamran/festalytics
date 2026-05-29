@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { doc, onSnapshot, updateDoc } from "firebase/firestore";
+import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "@/firebase";
 import { useVendorVenue } from "@/hooks/useVendorVenue";
+import { enableNetworkParticipation } from "@/lib/firestore/borrowHub";
 
 export default function NetworkGuard({ children }) {
   const { venueId, isLoading: venueLoading } = useVendorVenue();
@@ -45,10 +46,7 @@ export default function NetworkGuard({ children }) {
     setUpdating(true);
     setError("");
     try {
-      await updateDoc(doc(db, "venues", currentVendorSlug), {
-        isNetworkParticipant: true,
-        updatedAt: new Date().toISOString(),
-      });
+      await enableNetworkParticipation(currentVendorSlug);
     } catch (updateError) {
       setError(updateError.message || "Could not enable network participation.");
     } finally {

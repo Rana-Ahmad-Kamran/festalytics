@@ -1,11 +1,10 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { useBorrowHub } from "@/hooks/useBorrowHub";
-import BorrowHubInventoryModal from "@/components/vendor/borrow-hub/BorrowHubInventoryModal";
 import {
-  publishBorrowHubCatalog,
   enableNetworkParticipation,
   createBorrowRequest,
   acceptBorrowRequest,
@@ -28,15 +27,9 @@ export default function BorrowHubPage() {
   const hub = useBorrowHub();
   const [isProcessing, setIsProcessing] = useState(false);
   const [toast, setToast] = useState({ show: false, message: "", type: "success" });
-  const [inventoryOpen, setInventoryOpen] = useState(false);
   const [trackerTab, setTrackerTab] = useState("incoming");
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState("all");
-
-  const [hubEnabled, setHubEnabled] = useState(false);
-  const [hubPhone, setHubPhone] = useState("");
-  const [hubTerms, setHubTerms] = useState("");
-  const [itemForm, setItemForm] = useState(null);
 
   const [requestModal, setRequestModal] = useState(null);
   const [reqQty, setReqQty] = useState(1);
@@ -44,14 +37,6 @@ export default function BorrowHubPage() {
   const [reqNotes, setReqNotes] = useState("");
   const [reqUrgency, setReqUrgency] = useState("planned");
   const isNetworkParticipant = hub.isNetworkParticipant;
-
-  React.useEffect(() => {
-    if (hub.borrowHub) {
-      setHubEnabled(hub.borrowHub.enabled === true);
-      setHubPhone(hub.borrowHub.contactPhone || "");
-      setHubTerms(hub.borrowHub.defaultTerms || "");
-    }
-  }, [hub.borrowHub]);
 
   const metrics = useMemo(
     () => computeBorrowMetrics(hub.incomingRequests, hub.outgoingRequests),
@@ -84,120 +69,6 @@ export default function BorrowHubPage() {
   const showToast = (message, type = "success") => {
     setToast({ show: true, message, type });
     setTimeout(() => setToast({ show: false, message: "", type: "success" }), 3500);
-  };
-
-  const borrowHubPayload = (enabledOverride) => ({
-    ...hub.borrowHub,
-    enabled: enabledOverride ?? hubEnabled,
-    displayName: hub.venueDisplayName,
-    contactPhone: hubPhone,
-    defaultTerms: hubTerms,
-  });
-
-  const handleSaveHubSettings = async () => {
-    if (!hub.venueId) {
-      showToast("Venue not linked to your account.", "error");
-      return;
-    }
-    setIsProcessing(true);
-    try {
-      await publishBorrowHubCatalog(hub.venueId, {
-        inventory: hub.inventory,
-        borrowHub: borrowHubPayload(hubEnabled),
-        venueMeta: hub.venueData,
-      });
-      showToast(
-        hubEnabled
-          ? "Settings saved. Listings synced to the network."
-          : "Settings saved. Enable the network to publish listings."
-      );
-    } catch (e) {
-      showToast(e.message || "Could not save settings.", "error");
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const handleSaveItem = async () => {
-    if (!hub.venueId) {
-      showToast("Venue not linked to your account.", "error");
-      return;
-    }
-    if (!itemForm) return;
-
-    const title = String(itemForm.title || "").trim();
-    if (!title) {
-      showToast("Please enter an item title.", "error");
-      return;
-    }
-    if (!String(itemForm.b2bContactNumber || "").trim()) {
-      showToast("Please add B2B contact number.", "error");
-      return;
-    }
-    if (!Array.isArray(itemForm.assetImages) || itemForm.assetImages.length === 0) {
-      showToast("Please upload at least one asset image.", "error");
-      return;
-    }
-
-    setIsProcessing(true);
-    try {
-      const next = [...hub.inventory];
-      const idx = next.findIndex((i) => i.itemId === itemForm.itemId);
-      const totalStockQuantity = Number(itemForm.totalStockQuantity) || 0;
-      const payload = {
-        ...itemForm,
-        title,
-        totalStockQuantity,
-        availableStockQuantity: Number(
-          itemForm.availableStockQuantity ?? totalStockQuantity
-        ) || 0,
-        quantityTotal: totalStockQuantity,
-        quantityAvailable:
-          Number(itemForm.availableStockQuantity ?? totalStockQuantity) || 0,
-        pricePerUnit:
-          itemForm.listingType === "lend" ? null : Number(itemForm.pricePerUnit) || 0,
-        assetImages: itemForm.assetImages || [],
-        assetVideoUrl: itemForm.assetVideoUrl || "",
-        b2bContactNumber: itemForm.b2bContactNumber || "",
-        updatedAt: new Date().toISOString(),
-        isActive: true,
-      };
-      if (idx >= 0) next[idx] = payload;
-      else next.push({ ...payload, createdAt: new Date().toISOString() });
-
-      await publishBorrowHubCatalog(hub.venueId, {
-        inventory: next,
-        borrowHub: borrowHubPayload(true),
-        venueMeta: hub.venueData,
-        forceEnable: true,
-      });
-      setHubEnabled(true);
-      setItemForm(null);
-      showToast("Item saved. Other vendors can now see it on the hub.");
-    } catch (e) {
-      console.error("[handleSaveItem]", e);
-      showToast(e.message || "Could not save item. Check Firestore rules.", "error");
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const handleDeleteItem = async (itemId) => {
-    if (!hub.venueId || !confirm("Remove this item from the Borrow Hub?")) return;
-    setIsProcessing(true);
-    try {
-      const next = hub.inventory.filter((i) => i.itemId !== itemId);
-      await publishBorrowHubCatalog(hub.venueId, {
-        inventory: next,
-        borrowHub: borrowHubPayload(hubEnabled),
-        venueMeta: hub.venueData,
-      });
-      showToast("Item removed.");
-    } catch (e) {
-      showToast(e.message, "error");
-    } finally {
-      setIsProcessing(false);
-    }
   };
 
   const handleSubmitRequest = async () => {
@@ -301,22 +172,25 @@ export default function BorrowHubPage() {
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
-        <button
-          type="button"
-          onClick={() => setInventoryOpen(true)}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-700 text-sm font-semibold hover:border-indigo-300 hover:text-indigo-600 shadow-sm"
+        <Link
+          href="/vendor-dashboard/my-inventory"
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-700 text-sm font-semibold hover:border-indigo-300 hover:text-indigo-600 shadow-sm transition-colors"
         >
           <span className="material-symbols-outlined text-lg">inventory_2</span>
-          Manage my inventory
+          My Inventory
           {hub.inventory.length > 0 && (
             <span className="bg-indigo-100 text-indigo-700 text-xs font-bold px-2 py-0.5 rounded-full">
               {hub.inventory.length}
             </span>
           )}
-        </button>
+        </Link>
         {!isNetworkParticipant && (
           <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg">
-            Enable network participation in Manage my inventory to list assets.
+            List assets from{" "}
+            <Link href="/vendor-dashboard/my-inventory" className="font-semibold underline">
+              My Inventory
+            </Link>{" "}
+            after enabling B2B network participation there.
           </p>
         )}
       </div>
@@ -334,15 +208,24 @@ export default function BorrowHubPage() {
               Join the inter-vendor marketplace to publish assets, receive borrow requests, and
               auto-manage live stock allocations in real time.
             </p>
-            <button
-              type="button"
-              disabled={isProcessing}
-              onClick={handleEnableNetworkParticipation}
-              className="mt-6 inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-violet-600 text-white font-semibold hover:bg-violet-700 disabled:opacity-50"
-            >
-              <span className="material-symbols-outlined text-lg">bolt</span>
-              Enable B2B Network Participation
-            </button>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Link
+                href="/vendor-dashboard/my-inventory"
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-violet-600 text-white font-semibold hover:bg-violet-700"
+              >
+                <span className="material-symbols-outlined text-lg">inventory_2</span>
+                Go to My Inventory
+              </Link>
+              <button
+                type="button"
+                disabled={isProcessing}
+                onClick={handleEnableNetworkParticipation}
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl border border-violet-200 bg-white text-violet-700 font-semibold hover:bg-violet-50 disabled:opacity-50"
+              >
+                <span className="material-symbols-outlined text-lg">bolt</span>
+                Enable network here
+              </button>
+            </div>
           </div>
         </div>
       ) : (
@@ -743,27 +626,6 @@ export default function BorrowHubPage() {
         </div>
       </div>
       )}
-
-      <BorrowHubInventoryModal
-        open={inventoryOpen}
-        onClose={() => {
-          setInventoryOpen(false);
-          setItemForm(null);
-        }}
-        hubEnabled={hubEnabled}
-        setHubEnabled={setHubEnabled}
-        hubPhone={hubPhone}
-        setHubPhone={setHubPhone}
-        hubTerms={hubTerms}
-        setHubTerms={setHubTerms}
-        inventory={hub.inventory}
-        itemForm={itemForm}
-        setItemForm={setItemForm}
-        onSaveSettings={handleSaveHubSettings}
-        onSaveItem={handleSaveItem}
-        onDeleteItem={handleDeleteItem}
-        isProcessing={isProcessing}
-      />
 
       {requestModal && (
         <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/50">

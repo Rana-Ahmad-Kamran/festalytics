@@ -203,11 +203,51 @@ export async function saveBorrowHubSettings(venueId, borrowHubSettings) {
   );
 }
 
+/**
+ * @param {string} venueId
+ * @returns {Promise<{ venueMeta: object, inventory: object[], isNetworkParticipant: boolean }>}
+ */
+export async function fetchVenueInventorySnapshot(venueId) {
+  if (!venueId) throw new Error("Venue not linked.");
+  const snap = await getDoc(doc(db, "venues", venueId));
+  if (!snap.exists()) throw new Error("Venue not found.");
+  const data = snap.data();
+  return {
+    venueMeta: data,
+    inventory: Array.isArray(data.borrowableInventory) ? data.borrowableInventory : [],
+    isNetworkParticipant: data.isNetworkParticipant === true,
+  };
+}
+
 export async function enableNetworkParticipation(venueId) {
   if (!venueId) throw new Error("Venue not linked.");
   await updateDoc(doc(db, "venues", venueId), {
     isNetworkParticipant: true,
     updatedAt: new Date().toISOString(),
+  });
+
+  const { venueMeta, inventory } = await fetchVenueInventorySnapshot(venueId);
+  if (inventory.length > 0) {
+    await saveBorrowableInventory(
+      venueId,
+      inventory,
+      { ...venueMeta, isNetworkParticipant: true },
+      { forceEnable: true }
+    );
+  }
+}
+
+/**
+ * Appends one catalog item and syncs `inventory_listings` for Borrow Hub discovery.
+ * @param {string} venueId
+ * @param {object} item
+ */
+export async function appendBorrowableInventoryItem(venueId, item) {
+  const { venueMeta, inventory, isNetworkParticipant } =
+    await fetchVenueInventorySnapshot(venueId);
+  const next = [...inventory, item];
+  return saveBorrowableInventory(venueId, next, venueMeta, {
+    forceEnable: isNetworkParticipant,
   });
 }
 
