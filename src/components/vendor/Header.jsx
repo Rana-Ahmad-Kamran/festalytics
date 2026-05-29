@@ -59,29 +59,23 @@ const Header = () => {
                 </div>
             </div>
 
-            <div className="flex items-center gap-4 ml-8">
-                <motion.button 
-                    whileHover={{ scale: 1.1, backgroundColor: 'var(--color-primary-fixed)' }}
-                    whileTap={{ scale: 0.9 }}
-                    className="material-symbols-outlined p-3 text-on-surface-variant rounded-full cursor-pointer transition-all"
+            <div className="flex items-center gap-3 ml-6 shrink-0">
+                <button
+                    type="button"
+                    onClick={() => router.push("/vendor-dashboard/settings/account")}
+                    className="flex h-10 w-10 items-center justify-center rounded-full text-on-surface-variant hover:bg-surface-container-high hover:text-primary transition-colors border-0 bg-transparent cursor-pointer"
+                    aria-label="Settings"
                 >
-                    notifications
-                </motion.button>
-                <motion.button 
-                    whileHover={{ scale: 1.1, backgroundColor: 'var(--color-primary-fixed)' }}
-                    whileTap={{ scale: 0.9 }}
-                    className="material-symbols-outlined p-3 text-on-surface-variant rounded-full cursor-pointer transition-all"
-                >
-                    settings
-                </motion.button>
-                <div className="h-8 w-px bg-outline-variant mx-2"></div>
-                
+                    <span className="material-symbols-outlined text-[22px]">settings</span>
+                </button>
+                <div className="h-8 w-px bg-outline-variant" />
+
                 <div className="relative">
-                    <div 
+                    <div
                         onClick={() => setShowDropdown(!showDropdown)}
-                        className="flex items-center gap-2 cursor-pointer group hover:bg-primary-fixed p-2 pr-4 rounded-full transition-all border border-transparent hover:border-primary/20"
+                        className="flex items-center gap-2 cursor-pointer group hover:bg-surface-container-high p-2 pr-3 rounded-full transition-colors"
                     >
-                        <div className="h-10 w-10 rounded-full bg-primary/10 border-2 border-primary flex items-center justify-center font-black text-primary text-sm shadow-md">
+                        <div className="h-10 w-10 rounded-full bg-primary/10 border-2 border-primary flex items-center justify-center font-black text-primary text-sm">
                             {vendorName.slice(0, 2).toUpperCase()}
                         </div>
                         <span className="font-bold text-on-surface select-none">{vendorName}</span>
@@ -96,7 +90,7 @@ const Header = () => {
                                     initial={{ opacity: 0, y: 15, scale: 0.95 }}
                                     animate={{ opacity: 1, y: 0, scale: 1 }}
                                     exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                                    className="absolute right-0 mt-3 w-56 bg-white/95 backdrop-blur-md border border-outline-variant/30 rounded-2xl shadow-xl shadow-primary/5 p-2 z-50 flex flex-col gap-1"
+                                    className="absolute right-0 mt-3 w-56 bg-white border border-outline-variant rounded-2xl shadow-lg p-2 z-50 flex flex-col gap-1"
                                 >
                                     <div className="px-4 py-3 border-b border-outline-variant/20 mb-1">
                                         <p className="text-xs font-black text-primary uppercase tracking-widest">Active Profile</p>

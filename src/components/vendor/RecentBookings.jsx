@@ -5,9 +5,9 @@ import { motion } from 'framer-motion';
 
 const RecentBookings = ({ bookings = [], isLoading = false }) => {
     return (
-        <div className="card-level-1 rounded-3xl overflow-hidden">
-            <div className="p-6 border-b border-outline-variant flex justify-between items-center bg-surface-container-low/50">
-                <h4 className="text-xl font-black tracking-tight">Recent Bookings</h4>
+        <div className="bg-white border border-outline-variant/70 rounded-2xl overflow-hidden shadow-sm">
+            <div className="p-5 border-b border-outline-variant flex justify-between items-center bg-surface-container-lowest/80">
+                <h4 className="text-lg font-black tracking-tight text-on-surface">Recent activity</h4>
                 <Link href="/vendor-dashboard/bookings">
                     <motion.span
                         whileHover={{ scale: 1.05 }}

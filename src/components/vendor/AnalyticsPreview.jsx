@@ -64,7 +64,13 @@ const AnalyticsPreview = ({ last7DaysBookings = [], servicePopularity = [], isLo
                                     initial={{ width: 0 }}
                                     animate={{ width: service.width || `${service.value}%` }}
                                     transition={{ duration: 0.6, delay: idx * 0.1 }}
-                                    className={`h-full rounded-full bg-${service.color || 'primary'}`}
+                                    className={
+                                      service.color === "secondary"
+                                        ? "h-full rounded-full bg-secondary"
+                                        : service.color === "tertiary"
+                                          ? "h-full rounded-full bg-tertiary"
+                                          : "h-full rounded-full bg-primary"
+                                    }
                                 />
                             </div>
                         </div>

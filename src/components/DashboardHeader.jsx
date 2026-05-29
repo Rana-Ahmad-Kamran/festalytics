@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { signOut, onAuthStateChanged } from 'firebase/auth'; // Import auth listener
 import { auth } from '../firebase';
-import { LogOut, User as UserIcon, Sparkles, Bell, Menu, X, Sun, SunDim, Moon, Palette } from 'lucide-react';
+import { LogOut, User as UserIcon, Sparkles, Menu, X, Sun, SunDim, Moon, Palette } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const DashboardHeader = () => {
@@ -89,17 +89,8 @@ const DashboardHeader = () => {
 
                     </div>
 
-                    {/* 3. Right Side: Notifications & Profile */}
+                    {/* 3. Right Side: Profile */}
                     <div className="flex items-center gap-4 sm:gap-6">
-
-                        {/* Notification Bell */}
-                        <button className="relative p-2 text-gray-400 hover:text-gray-600 transition-colors">
-                            <Bell className="w-5 h-5" />
-                            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500 border border-white"></span>
-                        </button>
-
-                        <div className="hidden lg:block h-6 w-px bg-gray-200"></div>
-
                         {/* User Info & Profile */}
                         <div className="flex items-center gap-3">
                             <div className="text-right hidden lg:block">

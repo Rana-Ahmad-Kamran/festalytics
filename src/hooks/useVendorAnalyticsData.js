@@ -477,6 +477,11 @@ export function useVendorAnalyticsData() {
     [quotationRows]
   );
 
+  const pendingRecords = useMemo(
+    () => allRecords.filter(isPendingRecord),
+    [allRecords]
+  );
+
   const analytics = useMemo(
     () => buildAnalytics(allRecords, venueMeta),
     [allRecords, venueMeta]
@@ -489,6 +494,7 @@ export function useVendorAnalyticsData() {
     analytics,
     allRecords,
     pendingQuotations,
+    pendingRecords,
     quotationRows,
     bookingRows,
     venueMeta,
