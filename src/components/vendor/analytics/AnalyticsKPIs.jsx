@@ -20,25 +20,27 @@ const AnalyticsKPIs = ({ analytics, isLoading = false }) => {
             color: 'primary',
             bg: 'primary-fixed',
             shadow: 'candy-shadow-pink',
-            sub: 'From confirmed bookings',
+            sub: 'Confirmed quotations & bookings',
         },
         {
-            label: 'Total Bookings',
+            label: 'Total Requests',
             value: isLoading ? '—' : String(totalBookings),
             trend: totalBookings > 0 ? 'Live' : null,
             icon: 'calendar_today',
             color: 'secondary',
             bg: 'secondary-container',
-            sub: 'Firestore bookings',
+            sub: analytics?.confirmedCount != null
+                ? `${analytics.confirmedCount} confirmed · ${analytics.pendingCount || 0} pending`
+                : 'Quotations & walk-in bookings',
         },
         {
             label: 'Conversion Rate',
-            value: isLoading ? '—' : totalBookings + (analytics?.pendingCount || 0) > 0 ? `${conversionRate}%` : '—',
+            value: isLoading ? '—' : totalBookings > 0 ? `${conversionRate}%` : '—',
             trend: null,
             icon: 'filter_alt',
             color: 'tertiary',
             bg: 'tertiary-fixed',
-            sub: 'Bookings vs quote requests',
+            sub: 'Confirmed vs all requests',
         },
         {
             label: 'Average Rating',

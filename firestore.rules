@@ -145,5 +145,53 @@ service cloud.firestore {
     match /quotations/{quotationId} {
       allow read, write: if isSignedIn();
     }
+
+    function chatRoom(chatId) {
+      return get(/databases/$(database)/documents/chats/$(chatId)).data;
+    }
+
+    function canReadChat(chatId) {
+      return isSignedIn() && (
+        chatRoom(chatId).customerId == request.auth.uid ||
+        (isVendor() && chatRoom(chatId).venueSlug == myVenueId())
+      );
+    }
+
+    match /chats/{chatId} {
+      allow read: if canReadChat(chatId);
+
+      allow create: if isSignedIn() && (
+        (isVendor()
+          && request.resource.data.venueSlug == myVenueId()
+          && request.resource.data.chatId == chatId)
+        || (request.resource.data.customerId == request.auth.uid
+          && request.resource.data.venueSlug is string
+          && request.resource.data.chatId == chatId)
+      );
+
+      allow update: if isSignedIn() && (
+        (isVendor() && resource.data.venueSlug == myVenueId()) ||
+        resource.data.customerId == request.auth.uid
+      );
+
+      match /messages/{messageId} {
+        allow read: if canReadChat(chatId);
+
+        allow create: if canReadChat(chatId) && (
+          (isVendor()
+            && chatRoom(chatId).venueSlug == myVenueId()
+            && request.resource.data.senderId == myVenueId())
+          || (chatRoom(chatId).customerId == request.auth.uid
+            && (
+              request.resource.data.senderId == request.auth.uid
+              || request.resource.data.type == 'system'
+            ))
+        );
+
+        allow update: if chatRoom(chatId).customerId == request.auth.uid
+          && resource.data.type == 'counter_offer'
+          && request.resource.data.type == 'counter_offer';
+      }
+    }
   }
 }

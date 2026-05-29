@@ -60,11 +60,6 @@ const Sidebar = () => {
             </nav>
 
             <div className="mt-auto border-t border-outline-variant pt-8 space-y-2 px-4">
-                <div className="px-4 mb-4">
-                    <button className="w-full bg-secondary text-on-secondary font-bold py-3 rounded-full shadow-[0_4px_16px_rgba(124,82,170,0.3)] hover:scale-105 transition-transform active:scale-95">
-                        Upgrade Plan
-                    </button>
-                </div>
                 {bottomItems.map((item, idx) => (
                     <Link key={idx} href={item.href}>
                         <motion.div

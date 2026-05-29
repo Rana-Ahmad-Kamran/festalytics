@@ -22,6 +22,11 @@ import {
     fetchLegacyVenueBookings,
 } from "@/lib/firestore/bookings";
 import {
+    buildChatId,
+    ensureChatRoom,
+    sendCounterOfferMessage,
+} from "@/lib/firestore/chats";
+import {
     appendZaydanCallingRow,
     bookingToCallingRow,
     syncAllZaydanToCallingSheet,
@@ -452,6 +457,35 @@ const BookingsPage = () => {
                         },
                     },
                 }));
+
+                const customerId = selectedDetailBooking.raw?.userId;
+                if (venueId && customerId) {
+                    try {
+                        const chatId = buildChatId(venueId, customerId);
+                        await ensureChatRoom({
+                            chatId,
+                            venueSlug: venueId,
+                            customerId,
+                            customerName: selectedDetailBooking.customer.name,
+                            subject: `Booking #${selectedDetailBooking.id} Discussion`,
+                            bookingRef: selectedDetailBooking.id,
+                        });
+                        const guestCount =
+                            Number(selectedDetailBooking.raw?.eventDetails?.guests) || 0;
+                        await sendCounterOfferMessage({
+                            chatId,
+                            venueSlug: venueId,
+                            counterOffer: {
+                                bookingRefId: selectedDetailBooking.id,
+                                revisedGuestPrice: newTotal,
+                                quotationId: selectedDetailBooking.raw?.quotationId,
+                                guestCount,
+                            },
+                        });
+                    } catch (chatErr) {
+                        console.error("[Bookings] counter offer chat:", chatErr);
+                    }
+                }
             }
         } catch (err) {
             console.error("Action error: ", err);
@@ -462,27 +496,52 @@ const BookingsPage = () => {
     };
 
     // Setup communication thread state memory segment and redirect
-    const handleInitiateChat = () => {
-        if (!selectedDetailBooking) return;
-        
+    const handleInitiateChat = async () => {
+        if (!selectedDetailBooking || !venueId) return;
+
+        const customerId = selectedDetailBooking.raw?.userId;
+        if (!customerId) {
+            triggerToast(
+                "This booking has no linked customer account — chat requires a storefront quotation.",
+                "error"
+            );
+            return;
+        }
+
         const customerName = selectedDetailBooking.customer.name;
-        const customerContact = selectedDetailBooking.customer.email; // email or phone
-        
-        // Save target parameters in localStorage so Chat thread resolves it on render load!
-        localStorage.setItem("activeChatThread", JSON.stringify({
-            name: customerName,
-            contact: customerContact,
-            bookingId: selectedDetailBooking.id,
-            service: selectedDetailBooking.service,
-            date: selectedDetailBooking.eventDate
-        }));
-        
-        triggerToast("Redirecting to messages room thread...");
-        
-        // Use standard routing
-        setTimeout(() => {
-            router.push('/vendor-dashboard/messages');
-        }, 1000);
+        const bookingRef = selectedDetailBooking.id;
+
+        try {
+            const chatId = buildChatId(venueId, customerId);
+            await ensureChatRoom({
+                chatId,
+                venueSlug: venueId,
+                customerId,
+                customerName,
+                subject: `Booking #${bookingRef} Discussion`,
+                bookingRef,
+            });
+
+            localStorage.setItem(
+                "activeChatThread",
+                JSON.stringify({
+                    chatId,
+                    customerId,
+                    name: customerName,
+                    venueSlug: venueId,
+                    bookingId: bookingRef,
+                    service: selectedDetailBooking.service,
+                    date: selectedDetailBooking.eventDate,
+                    subject: `Booking #${bookingRef} Discussion`,
+                })
+            );
+
+            triggerToast("Opening messages…");
+            router.push("/vendor-dashboard/messages");
+        } catch (err) {
+            console.error("[Bookings] initiate chat:", err);
+            triggerToast(`Could not open chat: ${err.message}`, "error");
+        }
     };
 
     const venueBookings = mergeBookingRows(firestoreBookings, legacyBookings, sheetBookings);

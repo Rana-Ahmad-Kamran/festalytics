@@ -43,9 +43,9 @@ const VendorDashboard = () => {
     const metrics = [
         {
             icon: 'calendar_month',
-            label: 'Total Bookings',
-            value: analyticsLoading ? '—' : String(analytics.totalBookings),
-            trendLabel: 'Live from Firestore',
+            label: 'Confirmed Bookings',
+            value: analyticsLoading ? '—' : String(analytics.confirmedCount ?? 0),
+            trendLabel: 'Quotations & walk-ins',
             iconBg: 'bg-primary-fixed',
         },
         {

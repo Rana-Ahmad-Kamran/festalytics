@@ -2,7 +2,9 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 
-const ChatSidebar = ({ threads = [], activeThread = null, onSelectThread }) => {
+const ChatSidebar = ({ threads = [], activeThread = null, onSelectThread, loading = false, error = null }) => {
+    const activeKey = activeThread?.chatId || activeThread?.id;
+
     return (
         <aside className="w-[340px] flex flex-col bg-white rounded-3xl shadow-xl overflow-hidden border border-outline-variant h-full text-slate-700 font-sans">
             <div className="p-6 space-y-6">
@@ -49,12 +51,26 @@ const ChatSidebar = ({ threads = [], activeThread = null, onSelectThread }) => {
 
             {/* Thread List */}
             <div className="flex-1 overflow-y-auto px-3 pb-6 custom-scrollbar">
+                {error && (
+                    <p className="px-4 py-2 text-xs font-bold text-rose-600 text-center">{error}</p>
+                )}
+                {loading && (
+                    <p className="px-4 py-6 text-[10px] font-black uppercase tracking-widest text-outline text-center">
+                        Syncing inbox…
+                    </p>
+                )}
+                {!loading && threads.length === 0 && (
+                    <p className="px-4 py-6 text-xs text-outline text-center font-medium">
+                        No conversations yet. Open a booking and start a chat with a customer.
+                    </p>
+                )}
                 <div className="space-y-2">
                     {threads.map((thread) => {
-                        const isActive = activeThread && activeThread.id === thread.id;
+                        const threadKey = thread.chatId || thread.id;
+                        const isActive = activeKey && activeKey === threadKey;
                         return (
                             <motion.div 
-                                key={thread.id}
+                                key={threadKey}
                                 whileHover={{ scale: 1.02 }}
                                 onClick={() => onSelectThread && onSelectThread(thread)}
                                 className={`p-5 rounded-2xl cursor-pointer transition-all border-l-4 text-left

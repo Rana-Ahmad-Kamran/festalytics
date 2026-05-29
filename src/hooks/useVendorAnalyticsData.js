@@ -4,23 +4,50 @@ import { useState, useEffect, useMemo } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "@/firebase";
 import { useVendorVenue } from "@/hooks/useVendorVenue";
-import { listenToVenueBookings } from "@/lib/firestore/bookings";
 import {
-  listenToIncomingQuotations,
+  listenToVenueBookings,
+  fetchLegacyVenueBookings,
+} from "@/lib/firestore/bookings";
+import {
+  listenToVenueQuotations,
   mapQuotationToBookingRow,
+  QUOTATION_STATUS,
 } from "@/lib/firestore/quotations";
 
 const DAY_LABELS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
-const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MONTH_LABELS = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+function mergeRows(...lists) {
+  const byKey = new Map();
+  for (const list of lists) {
+    for (const row of list) {
+      byKey.set(row.docId || row.id, row);
+    }
+  }
+  return Array.from(byKey.values());
+}
 
 function normalizeStatus(status) {
-  return (status || "").toLowerCase().trim();
+  return String(status || "").toLowerCase().trim();
 }
 
 function bookingAmount(row) {
   const n = Number(row.amount);
-  if (n > 0) return n;
-  return Number(row.raw?.financials?.grandTotal) || 0;
+  if (Number.isFinite(n) && n > 0) return n;
+  const grand = Number(row.raw?.financials?.grandTotal);
+  if (Number.isFinite(grand) && grand > 0) return grand;
+  return 0;
+}
+
+function parseFirestoreTimestamp(value) {
+  if (!value) return null;
+  if (typeof value?.toDate === "function") return value.toDate();
+  if (value instanceof Date) return value;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 function parseEventDate(row) {
@@ -30,24 +57,103 @@ function parseEventDate(row) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+/** Best date for charts: event date → quotation/booking timestamp → booked label */
+function parseRecordDate(row) {
+  const event = parseEventDate(row);
+  if (event) return event;
+  const ts = parseFirestoreTimestamp(row.raw?.timestamp || row.raw?.createdAt);
+  if (ts) return ts;
+  if (row.bookedDate && row.bookedDate !== "Today") {
+    const parsed = new Date(row.bookedDate);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  return null;
+}
+
 function formatDisplayDate(date) {
   if (!date) return "—";
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 function computeRatingFromReviews(reviews) {
-  if (!Array.isArray(reviews) || reviews.length === 0) return { average: 0, count: 0 };
+  if (!Array.isArray(reviews) || reviews.length === 0) {
+    return { average: 0, count: 0 };
+  }
   const rated = reviews.filter((r) => Number(r.rating) > 0);
   if (rated.length === 0) return { average: 0, count: reviews.length };
   const sum = rated.reduce((s, r) => s + Number(r.rating), 0);
   return { average: sum / rated.length, count: reviews.length };
 }
 
-function buildAnalytics(bookingRows, pendingQuotations, venueMeta) {
-  const allRows = [...pendingQuotations, ...bookingRows];
-  const totalBookings = bookingRows.length;
-  const totalRevenue = bookingRows.reduce((s, b) => s + bookingAmount(b), 0);
-  const pendingCount = pendingQuotations.length;
+/**
+ * Maps ERP UI + Firestore status into analytics buckets.
+ * @returns {"confirmed"|"pending"|"completed"|"cancelled"|"other"}
+ */
+export function classifyRecordStatus(row) {
+  const firestore = normalizeStatus(
+    row.raw?.firestoreStatus || row.raw?.status || ""
+  ).replace(/\s+/g, "_");
+  const ui = normalizeStatus(row.status);
+
+  if (
+    firestore === QUOTATION_STATUS.CONFIRMED ||
+    firestore === "confirmed" ||
+    ui.includes("confirmed")
+  ) {
+    return "confirmed";
+  }
+
+  if (
+    firestore === QUOTATION_STATUS.DECLINED ||
+    firestore === "declined" ||
+    ui.includes("declined") ||
+    ui.includes("cancel")
+  ) {
+    return "cancelled";
+  }
+
+  if (ui === "completed" || firestore === "completed") {
+    return "completed";
+  }
+
+  if (
+    firestore === QUOTATION_STATUS.PENDING ||
+    firestore === QUOTATION_STATUS.COUNTER ||
+    firestore === "counter_offer" ||
+    ui.includes("pending") ||
+    ui.includes("quote") ||
+    ui.includes("counter")
+  ) {
+    return "pending";
+  }
+
+  if (ui === "confirmed" || normalizeStatus(row.raw?.status) === "confirmed") {
+    return "confirmed";
+  }
+
+  return "other";
+}
+
+function isConfirmedRecord(row) {
+  return classifyRecordStatus(row) === "confirmed";
+}
+
+function isPendingRecord(row) {
+  return classifyRecordStatus(row) === "pending";
+}
+
+function buildAnalytics(allRecords, venueMeta) {
+  const confirmedRecords = allRecords.filter(isConfirmedRecord);
+  const pendingRecords = allRecords.filter(isPendingRecord);
+
+  const totalBookings = allRecords.length;
+  const confirmedCount = confirmedRecords.length;
+  const totalRevenue = confirmedRecords.reduce((s, b) => s + bookingAmount(b), 0);
+  const pendingCount = pendingRecords.length;
 
   const venueStats = venueMeta?.stats || {};
   const reviews = Array.isArray(venueMeta?.reviews) ? venueMeta.reviews : [];
@@ -57,19 +163,21 @@ function buildAnalytics(bookingRows, pendingQuotations, venueMeta) {
       ? Number(venueStats.averageRating)
       : reviewStats.average;
   const reviewCount =
-    Number(venueStats.reviewCount) > 0 ? Number(venueStats.reviewCount) : reviewStats.count;
+    Number(venueStats.reviewCount) > 0
+      ? Number(venueStats.reviewCount)
+      : reviewStats.count;
 
-  const statusCounts = { confirmed: 0, pending: 0, completed: 0, cancelled: 0, other: 0 };
-  for (const row of allRows) {
-    const st = normalizeStatus(row.status);
-    if (st === "confirmed") statusCounts.confirmed += 1;
-    else if (st === "completed") statusCounts.completed += 1;
-    else if (st.includes("cancel") || st === "declined") statusCounts.cancelled += 1;
-    else if (st.includes("pending") || st.includes("quote") || st === "counter offer")
+  const statusCounts = { confirmed: 0, pending: 0, completed: 0, cancelled: 0 };
+  for (const row of allRecords) {
+    const bucket = classifyRecordStatus(row);
+    if (bucket === "other") {
       statusCounts.pending += 1;
-    else statusCounts.other += 1;
+    } else if (statusCounts[bucket] !== undefined) {
+      statusCounts[bucket] += 1;
+    }
   }
-  const statusTotal = allRows.length || 1;
+
+  const statusTotal = allRecords.length || 0;
   const statusBreakdown = [
     { label: "Confirmed", key: "confirmed", count: statusCounts.confirmed },
     { label: "Pending", key: "pending", count: statusCounts.pending },
@@ -77,8 +185,11 @@ function buildAnalytics(bookingRows, pendingQuotations, venueMeta) {
     { label: "Cancelled", key: "cancelled", count: statusCounts.cancelled },
   ].map((item) => ({
     ...item,
-    pct: Math.round((item.count / statusTotal) * 100),
-    value: `${Math.round((item.count / statusTotal) * 100)}%`,
+    pct: statusTotal > 0 ? Math.round((item.count / statusTotal) * 100) : 0,
+    value:
+      statusTotal > 0
+        ? `${Math.round((item.count / statusTotal) * 100)}%`
+        : "0%",
   }));
 
   const now = new Date();
@@ -87,15 +198,11 @@ function buildAnalytics(bookingRows, pendingQuotations, venueMeta) {
     const d = new Date(now);
     d.setDate(d.getDate() - i);
     const key = d.toISOString().slice(0, 10);
-    last7Days.push({
-      day: DAY_LABELS[d.getDay()],
-      key,
-      count: 0,
-    });
+    last7Days.push({ day: DAY_LABELS[d.getDay()], key, count: 0 });
   }
   const last7Map = Object.fromEntries(last7Days.map((d) => [d.key, d]));
-  for (const row of bookingRows) {
-    const ed = parseEventDate(row);
+  for (const row of allRecords) {
+    const ed = parseRecordDate(row);
     if (!ed) continue;
     const key = ed.toISOString().slice(0, 10);
     if (last7Map[key]) last7Map[key].count += 1;
@@ -109,11 +216,13 @@ function buildAnalytics(bookingRows, pendingQuotations, venueMeta) {
   }));
 
   const serviceMap = new Map();
-  for (const row of bookingRows) {
+  for (const row of allRecords) {
     const label = row.service || row.raw?.eventDetails?.category || "General Booking";
     const prev = serviceMap.get(label) || { label, count: 0, revenue: 0 };
     prev.count += 1;
-    prev.revenue += bookingAmount(row);
+    if (isConfirmedRecord(row)) {
+      prev.revenue += bookingAmount(row);
+    }
     serviceMap.set(label, prev);
   }
   const popularServices = Array.from(serviceMap.values())
@@ -139,8 +248,9 @@ function buildAnalytics(bookingRows, pendingQuotations, venueMeta) {
       bookings: 0,
     });
   }
-  for (const row of bookingRows) {
-    const ed = parseEventDate(row);
+
+  for (const row of confirmedRecords) {
+    const ed = parseRecordDate(row);
     if (!ed) continue;
     const bucket = monthlyBuckets.find(
       (b) => b.year === ed.getFullYear() && b.monthIndex === ed.getMonth()
@@ -150,13 +260,15 @@ function buildAnalytics(bookingRows, pendingQuotations, venueMeta) {
       bucket.revenue += bookingAmount(row);
     }
   }
+
   const maxMonthlyRevenue = Math.max(1, ...monthlyBuckets.map((b) => b.revenue));
+  const maxMonthlyBookings = Math.max(1, ...monthlyBuckets.map((b) => b.bookings));
   const monthlyPerformance = monthlyBuckets.map((b, i) => ({
     month: b.month,
     revenue: b.revenue,
     bookings: b.bookings,
     h1: Math.round((b.revenue / maxMonthlyRevenue) * 100),
-    h2: Math.round((b.bookings / Math.max(1, ...monthlyBuckets.map((x) => x.bookings))) * 100),
+    h2: Math.round((b.bookings / maxMonthlyBookings) * 100),
     index: i,
   }));
 
@@ -166,29 +278,30 @@ function buildAnalytics(bookingRows, pendingQuotations, venueMeta) {
     height: Math.round((b.revenue / maxMonthlyRevenue) * 100) / 100,
   }));
 
-  const recentBookings = [...allRows]
+  const recentBookings = [...allRecords]
     .sort((a, b) => {
-      const da = parseEventDate(a)?.getTime() || 0;
-      const db = parseEventDate(b)?.getTime() || 0;
+      const da = parseRecordDate(a)?.getTime() || 0;
+      const db = parseRecordDate(b)?.getTime() || 0;
       return db - da;
     })
     .slice(0, 5)
-    .map((row) => ({
-      customer: row.customer?.name || "Client",
-      service: row.service || "Event",
-      date: row.eventDate || row.bookedDate || "—",
-      status: row.status || "Pending",
-      statusColor:
-        normalizeStatus(row.status) === "completed"
-          ? "bg-surface-container-highest text-on-surface-variant border-outline/20"
-          : normalizeStatus(row.status).includes("pending") ||
-              normalizeStatus(row.status).includes("quote")
-            ? "bg-tertiary-fixed text-on-tertiary-fixed-variant border-tertiary/20"
-            : normalizeStatus(row.status).includes("cancel") ||
-                normalizeStatus(row.status) === "declined"
-              ? "bg-error-container text-on-error-container border-error/20"
-              : "bg-secondary-container text-on-secondary-container border-secondary/20",
-    }));
+    .map((row) => {
+      const bucket = classifyRecordStatus(row);
+      return {
+        customer: row.customer?.name || "Client",
+        service: row.service || "Event",
+        date: row.eventDate || row.bookedDate || "—",
+        status: row.status || "Pending",
+        statusColor:
+          bucket === "completed"
+            ? "bg-surface-container-highest text-on-surface-variant border-outline/20"
+            : bucket === "pending"
+              ? "bg-tertiary-fixed text-on-tertiary-fixed-variant border-tertiary/20"
+              : bucket === "cancelled"
+                ? "bg-error-container text-on-error-container border-error/20"
+                : "bg-secondary-container text-on-secondary-container border-secondary/20",
+      };
+    });
 
   const servicePerformance = popularServices.map((s) => ({
     name: s.label,
@@ -200,29 +313,40 @@ function buildAnalytics(bookingRows, pendingQuotations, venueMeta) {
   }));
 
   const weeklyPerformance = last7Days.map((d) => {
-    const dayBookings = bookingRows.filter((row) => {
-      const ed = parseEventDate(row);
+    const dayRecords = allRecords.filter((row) => {
+      const ed = parseRecordDate(row);
       return ed && ed.toISOString().slice(0, 10) === d.key;
     });
-    const rev = dayBookings.reduce((s, b) => s + bookingAmount(b), 0);
+    const confirmedDay = dayRecords.filter(isConfirmedRecord);
+    const rev = confirmedDay.reduce((s, b) => s + bookingAmount(b), 0);
     return {
       day: d.day,
-      bookings: dayBookings.length,
+      bookings: dayRecords.length,
       revenue: `Rs. ${rev.toLocaleString()}`,
       active: d.key === now.toISOString().slice(0, 10),
     };
   });
 
-  const recentPayments = bookingRows
-    .filter((b) => Number(b.raw?.financials?.advancePaid) > 0)
+  const recentPayments = confirmedRecords
+    .filter((b) => {
+      const advance = Number(b.raw?.financials?.advancePaid);
+      const paid = Number(b.raw?.financials?.amountPaid);
+      return advance > 0 || paid > 0;
+    })
     .slice(0, 5)
-    .map((b) => ({
-      date: formatDisplayDate(parseEventDate(b)),
-      id: b.id || b.docId,
-      amount: `Rs. ${Number(b.raw?.financials?.advancePaid).toLocaleString()}`,
-      status: normalizeStatus(b.status) === "confirmed" ? "Paid" : "Pending",
-      color: normalizeStatus(b.status) === "confirmed" ? "tertiary" : "secondary",
-    }));
+    .map((b) => {
+      const paid =
+        Number(b.raw?.financials?.advancePaid) ||
+        Number(b.raw?.financials?.amountPaid) ||
+        0;
+      return {
+        date: formatDisplayDate(parseRecordDate(b)),
+        id: b.id || b.docId,
+        amount: `Rs. ${paid.toLocaleString()}`,
+        status: "Paid",
+        color: "tertiary",
+      };
+    });
 
   const latestReviews = reviews.slice(0, 3).map((r) => ({
     name: r.name || "Customer",
@@ -234,21 +358,20 @@ function buildAnalytics(bookingRows, pendingQuotations, venueMeta) {
   }));
 
   const conversionRate =
-    pendingQuotations.length + bookingRows.length > 0
-      ? Math.round(
-          (bookingRows.length / (pendingQuotations.length + bookingRows.length)) * 1000
-        ) / 10
+    totalBookings > 0
+      ? Math.round((confirmedCount / totalBookings) * 1000) / 10
       : 0;
 
   return {
     totalBookings,
+    confirmedCount,
     totalRevenue,
     pendingCount,
     averageRating,
     reviewCount,
     conversionRate,
     statusBreakdown,
-    statusTotal: allRows.length,
+    statusTotal,
     last7DaysBookings,
     servicePopularity,
     monthlyPerformance,
@@ -258,17 +381,18 @@ function buildAnalytics(bookingRows, pendingQuotations, venueMeta) {
     weeklyPerformance,
     recentPayments,
     latestReviews,
-    hasData: allRows.length > 0,
+    hasData: allRecords.length > 0,
   };
 }
 
 /**
- * Live vendor analytics from Firestore bookings, quotations, and venue profile.
+ * Live vendor analytics from Firestore quotations, bookings, and venue profile.
  */
 export function useVendorAnalyticsData() {
   const { venueId, isLoading: venueLoading } = useVendorVenue();
+  const [quotationRows, setQuotationRows] = useState([]);
   const [bookingRows, setBookingRows] = useState([]);
-  const [pendingQuotations, setPendingQuotations] = useState([]);
+  const [legacyRows, setLegacyRows] = useState([]);
   const [venueMeta, setVenueMeta] = useState(null);
   const [dataLoading, setDataLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -277,8 +401,9 @@ export function useVendorAnalyticsData() {
     if (venueLoading || !venueId) {
       if (!venueLoading) {
         setDataLoading(false);
+        setQuotationRows([]);
         setBookingRows([]);
-        setPendingQuotations([]);
+        setLegacyRows([]);
       }
       return;
     }
@@ -286,25 +411,48 @@ export function useVendorAnalyticsData() {
     setDataLoading(true);
     setError(null);
 
+    let quotationsReady = false;
+    let bookingsReady = false;
+
+    const maybeDoneLoading = () => {
+      if (quotationsReady && bookingsReady) {
+        setDataLoading(false);
+      }
+    };
+
+    const unsubQuotations = listenToVenueQuotations(
+      venueId,
+      (quotations) => {
+        setQuotationRows(quotations.map(mapQuotationToBookingRow));
+        quotationsReady = true;
+        maybeDoneLoading();
+      },
+      (err) => {
+        setError(err.message);
+        quotationsReady = true;
+        maybeDoneLoading();
+      }
+    );
+
     const unsubBookings = listenToVenueBookings(
       venueId,
       (rows) => {
         setBookingRows(rows);
-        setDataLoading(false);
+        bookingsReady = true;
+        maybeDoneLoading();
       },
       (err) => {
         setError(err.message);
-        setDataLoading(false);
+        bookingsReady = true;
+        maybeDoneLoading();
       }
     );
 
-    const unsubQuotations = listenToIncomingQuotations(
-      venueId,
-      (quotations) => {
-        setPendingQuotations(quotations.map(mapQuotationToBookingRow));
-      },
-      (err) => setError(err.message)
-    );
+    fetchLegacyVenueBookings(venueId)
+      .then(setLegacyRows)
+      .catch((err) => {
+        console.error("[useVendorAnalyticsData] legacy bookings:", err);
+      });
 
     const unsubVenue = onSnapshot(
       doc(db, "venues", venueId),
@@ -313,15 +461,25 @@ export function useVendorAnalyticsData() {
     );
 
     return () => {
-      unsubBookings();
       unsubQuotations();
+      unsubBookings();
       unsubVenue();
     };
   }, [venueId, venueLoading]);
 
+  const allRecords = useMemo(
+    () => mergeRows(quotationRows, bookingRows, legacyRows),
+    [quotationRows, bookingRows, legacyRows]
+  );
+
+  const pendingQuotations = useMemo(
+    () => quotationRows.filter(isPendingRecord),
+    [quotationRows]
+  );
+
   const analytics = useMemo(
-    () => buildAnalytics(bookingRows, pendingQuotations, venueMeta),
-    [bookingRows, pendingQuotations, venueMeta]
+    () => buildAnalytics(allRecords, venueMeta),
+    [allRecords, venueMeta]
   );
 
   return {
@@ -329,8 +487,10 @@ export function useVendorAnalyticsData() {
     isLoading: venueLoading || dataLoading,
     error,
     analytics,
-    bookingRows,
+    allRecords,
     pendingQuotations,
+    quotationRows,
+    bookingRows,
     venueMeta,
   };
 }

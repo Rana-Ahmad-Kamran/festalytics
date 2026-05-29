@@ -17,7 +17,7 @@ export const RevenueTrendChart = ({ revenueTrend = [], isLoading = false }) => {
             <div className="flex justify-between items-center mb-8">
                 <div>
                     <h4 className="font-black text-xl text-on-surface tracking-tight">Revenue Trend</h4>
-                    <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mt-1">Last 6 months (Firestore)</p>
+                    <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mt-1">Last 6 months · confirmed revenue</p>
                 </div>
             </div>
             <div className="flex-1 w-full bg-surface-container-low rounded-[2rem] relative overflow-hidden flex items-end px-8 pb-4">

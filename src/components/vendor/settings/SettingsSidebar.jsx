@@ -79,16 +79,6 @@ const SettingsSidebar = () => {
                         );
                     })}
                 </nav>
-
-                <div className="mt-10 pt-8 border-t border-outline-variant/30">
-                    <motion.button 
-                        whileHover={{ scale: 1.03 }}
-                        whileTap={{ scale: 0.97 }}
-                        className="w-full py-4 bg-tertiary text-white rounded-full font-black text-xs uppercase tracking-widest shadow-lg shadow-tertiary/20"
-                    >
-                        Upgrade Plan
-                    </motion.button>
-                </div>
             </div>
 
             {/* Support Contact Quick Info */}

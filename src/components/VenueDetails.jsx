@@ -16,6 +16,7 @@ import {
 import PublicVenueCalendar from "@/components/venue/PublicVenueCalendar";
 import { getDateStatus } from "@/lib/firestore/venueCalendar";
 import { usePublicVenueCalendar } from "@/hooks/usePublicVenueCalendar";
+import CustomerVenueChat from "@/components/chat/CustomerVenueChat";
 
 const VenueDetails = () => {
   const { id } = useParams();
@@ -1229,6 +1230,11 @@ const VenueDetails = () => {
           </div>
         )}
       </AnimatePresence>
+
+      <CustomerVenueChat
+        venueSlug={id}
+        venueName={venue?.hall_name || venue?.name}
+      />
     </div>
   );
 };
