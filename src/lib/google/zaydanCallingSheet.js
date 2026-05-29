@@ -28,17 +28,22 @@ export function quotationToCallingRow(quotation) {
       ? menu?.packageName || menu?.name || "—"
       : String(menu ?? "—");
 
+  const total =
+    quotation.financials?.grandTotal != null
+      ? String(quotation.financials.grandTotal)
+      : "0";
+
   return [
     "Quotation",
     quotation.quotationId || quotation.id || "—",
     quotation.customerName || "—",
-    quotation.userId || "—",
+    quotation.customerContact || quotation.userId || "—",
     quotation.eventDate || "—",
-    "—",
+    quotation.eventTime || "—",
     String(quotation.guestCount ?? "—"),
     packageName,
-    "0",
-    "Online Portal",
+    total,
+    quotation.source || "Online Portal",
     quotation.status || "pending_vendor_approval",
     quotation.targetVenueId || ZAYDAN_VENUE_SLUG,
     new Date().toISOString(),

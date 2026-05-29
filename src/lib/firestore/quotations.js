@@ -2,22 +2,62 @@ import {
   collection,
   doc,
   setDoc,
+  updateDoc,
   query,
   where,
   onSnapshot,
   serverTimestamp,
+  getDoc,
 } from "firebase/firestore";
 import { db } from "@/firebase";
 
 const QUOTATIONS_COLLECTION = "quotations";
-const INITIAL_STATUS = "pending_vendor_approval";
+export const QUOTATION_STATUS = {
+  PENDING: "pending_vendor_approval",
+  CONFIRMED: "confirmed",
+  DECLINED: "declined",
+  COUNTER: "counter_offer",
+};
+
+/** @deprecated use QUOTATION_STATUS.PENDING */
+export const INITIAL_STATUS = QUOTATION_STATUS.PENDING;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
- * Validates storefront quotation payload before persistence.
- * @param {object} payload
- * @throws {Error}
+ * Maps Firestore quotation status → ERP table / drawer label.
+ * @param {string} [firestoreStatus]
+ * @returns {string}
  */
+export function mapQuotationStatusToUi(firestoreStatus) {
+  const s = String(firestoreStatus || "").toLowerCase().replace(/\s+/g, "_");
+  if (s === QUOTATION_STATUS.CONFIRMED || s === "confirmed") {
+    return "Confirmed";
+  }
+  if (s === QUOTATION_STATUS.DECLINED || s === "declined") {
+    return "Declined";
+  }
+  if (s === QUOTATION_STATUS.COUNTER || s === "counter_offer" || s === "counter offer") {
+    return "Counter Offer";
+  }
+  if (s === QUOTATION_STATUS.PENDING || s === "pending" || s === "quote_request") {
+    return "Quote Request";
+  }
+  return "Quote Request";
+}
+
+/**
+ * @param {string} uiStatus
+ * @returns {boolean}
+ */
+export function isQuotationActionable(uiStatus) {
+  const s = String(uiStatus || "").toLowerCase();
+  return (
+    s === "quote request" ||
+    s === "pending" ||
+    s === "counter offer"
+  );
+}
+
 function assertCustomerQuotationPayload(payload) {
   if (!payload || typeof payload !== "object") {
     throw new Error("submitCustomerQuotation: payload must be a non-null object.");
@@ -50,19 +90,6 @@ function assertCustomerQuotationPayload(payload) {
   }
 }
 
-/**
- * Storefront Event Generator — persists a customer quotation request.
- * Writes to root collection `quotations` with an auto-generated document ID.
- *
- * @param {object} payload
- * @param {string} payload.userId
- * @param {string} payload.customerName
- * @param {string} payload.targetVenueId - Venue slug (e.g. "zaydan-banquet-hall")
- * @param {string} payload.eventDate - YYYY-MM-DD
- * @param {number|string} payload.guestCount
- * @param {*} payload.selectedMenu
- * @returns {Promise<{ quotationId: string }>}
- */
 export async function submitCustomerQuotation(payload) {
   try {
     assertCustomerQuotationPayload(payload);
@@ -78,9 +105,17 @@ export async function submitCustomerQuotation(payload) {
       eventDate: payload.eventDate.trim(),
       guestCount: Number(payload.guestCount),
       selectedMenu: payload.selectedMenu,
-      status: INITIAL_STATUS,
+      status: QUOTATION_STATUS.PENDING,
       timestamp: serverTimestamp(),
     };
+
+    if (payload.eventTitle) quotationRecord.eventTitle = String(payload.eventTitle).trim();
+    if (payload.eventType) quotationRecord.eventType = String(payload.eventType).trim();
+    if (payload.eventTime) quotationRecord.eventTime = String(payload.eventTime).trim();
+    if (payload.eventLocation) quotationRecord.eventLocation = String(payload.eventLocation).trim();
+    if (payload.selectedAddons) quotationRecord.selectedAddons = payload.selectedAddons;
+    if (payload.financials) quotationRecord.financials = payload.financials;
+    if (payload.source) quotationRecord.source = String(payload.source).trim();
 
     await setDoc(docRef, quotationRecord);
 
@@ -92,43 +127,48 @@ export async function submitCustomerQuotation(payload) {
 }
 
 /**
- * ERP Dashboard real-time listener — streams pending quotations for a vendor venue slug.
- *
- * Compound query:
- *   where("targetVenueId", "==", vendorSlug)
- *   AND where("status", "==", "pending_vendor_approval")
- *
- * Requires a Firestore composite index on (targetVenueId ASC, status ASC).
- *
- * @param {string} vendorSlug - Venue document ID slug (e.g. "zaydan-banquet-hall")
- * @param {(quotations: Array<{ id: string } & object>) => void} callback
- * @param {(error: Error) => void} [onError]
- * @returns {() => void} Unsubscribe function — call on component unmount.
+ * Pending-only stream (analytics widgets). Bookings ERP should use listenToVenueQuotations.
  */
 export function listenToIncomingQuotations(vendorSlug, callback, onError) {
+  return listenToVenueQuotations(
+    vendorSlug,
+    (all) => {
+      const pending = all.filter(
+        (q) =>
+          String(q.status || "").toLowerCase() === QUOTATION_STATUS.PENDING
+      );
+      callback(pending);
+    },
+    onError
+  );
+}
+
+/**
+ * All quotations for a venue slug — item stays in list when status changes.
+ */
+export function listenToVenueQuotations(vendorSlug, callback, onError) {
   if (typeof vendorSlug !== "string" || !vendorSlug.trim()) {
     const error = new Error(
-      'listenToIncomingQuotations: "vendorSlug" is required and must be a non-empty string.'
+      'listenToVenueQuotations: "vendorSlug" is required and must be a non-empty string.'
     );
-    console.error("[listenToIncomingQuotations]", error);
+    console.error("[listenToVenueQuotations]", error);
     if (typeof onError === "function") onError(error);
     return () => {};
   }
 
   if (typeof callback !== "function") {
-    throw new Error('listenToIncomingQuotations: "callback" must be a function.');
+    throw new Error('listenToVenueQuotations: "callback" must be a function.');
   }
 
   try {
     const quotationsRef = collection(db, QUOTATIONS_COLLECTION);
-    const incomingQuery = query(
+    const venueQuery = query(
       quotationsRef,
-      where("targetVenueId", "==", vendorSlug.trim()),
-      where("status", "==", INITIAL_STATUS)
+      where("targetVenueId", "==", vendorSlug.trim())
     );
 
     const unsubscribe = onSnapshot(
-      incomingQuery,
+      venueQuery,
       (querySnapshot) => {
         const quotations = querySnapshot.docs.map((d) => ({
           id: d.id,
@@ -137,7 +177,7 @@ export function listenToIncomingQuotations(vendorSlug, callback, onError) {
         callback(quotations);
       },
       (error) => {
-        console.error("[listenToIncomingQuotations] Snapshot listener error:", error);
+        console.error("[listenToVenueQuotations] Snapshot listener error:", error);
         if (typeof onError === "function") {
           onError(error);
         }
@@ -146,7 +186,7 @@ export function listenToIncomingQuotations(vendorSlug, callback, onError) {
 
     return unsubscribe;
   } catch (error) {
-    console.error("[listenToIncomingQuotations] Failed to attach listener:", error);
+    console.error("[listenToVenueQuotations] Failed to attach listener:", error);
     if (typeof onError === "function") {
       onError(error);
     }
@@ -155,10 +195,52 @@ export function listenToIncomingQuotations(vendorSlug, callback, onError) {
 }
 
 /**
- * Normalizes a Firestore quotation document into the bookings table row shape.
- * @param {{ id: string } & object} quotation
- * @returns {object}
+ * @param {string} docId
+ * @param {string} status - use QUOTATION_STATUS values
+ * @param {object} [extra]
  */
+export async function updateQuotationStatus(docId, status, extra = {}) {
+  if (!docId) throw new Error("updateQuotationStatus: docId is required.");
+  const ref = doc(db, QUOTATIONS_COLLECTION, docId);
+  await updateDoc(ref, {
+    status,
+    updatedAt: serverTimestamp(),
+    ...extra,
+  });
+}
+
+/**
+ * @param {string} docId
+ * @returns {Promise<object|null>}
+ */
+export async function getQuotationById(docId) {
+  const snap = await getDoc(doc(db, QUOTATIONS_COLLECTION, docId));
+  if (!snap.exists()) return null;
+  return { id: snap.id, ...snap.data() };
+}
+
+/**
+ * Real-time listener for a single quotation (user storefront / manage-event).
+ */
+export function listenToQuotationById(docId, callback, onError) {
+  if (!docId) return () => {};
+  const ref = doc(db, QUOTATIONS_COLLECTION, docId);
+  return onSnapshot(
+    ref,
+    (snap) => {
+      if (!snap.exists()) {
+        callback(null);
+        return;
+      }
+      callback({ id: snap.id, ...snap.data() });
+    },
+    (error) => {
+      console.error("[listenToQuotationById]", error);
+      if (typeof onError === "function") onError(error);
+    }
+  );
+}
+
 export function mapQuotationToBookingRow(quotation) {
   const menu = quotation.selectedMenu;
   const packageName =
@@ -168,21 +250,31 @@ export function mapQuotationToBookingRow(quotation) {
   const perPlatePrice =
     typeof menu === "object" ? Number(menu?.perPlatePrice) || 0 : 0;
   const guestCount = Number(quotation.guestCount) || 0;
-  const estimatedAmount = perPlatePrice > 0 ? perPlatePrice * guestCount : 0;
+  const financialsTotal = Number(quotation.financials?.grandTotal);
+  const estimatedAmount =
+    Number.isFinite(financialsTotal) && financialsTotal > 0
+      ? financialsTotal
+      : perPlatePrice > 0
+        ? perPlatePrice * guestCount
+        : 0;
+
+  const uiStatus = mapQuotationStatusToUi(quotation.status);
+  const isConfirmed =
+    String(quotation.status || "").toLowerCase() === QUOTATION_STATUS.CONFIRMED;
 
   return {
     docId: quotation.id,
     id: quotation.quotationId || quotation.id,
     customer: {
       name: quotation.customerName || "Customer",
-      email: "Storefront Quotation",
+      email: quotation.eventLocation || quotation.userId || "Storefront Quotation",
       avatar: null,
     },
     service: packageName,
     bookedDate: "Today",
     eventDate: quotation.eventDate || "",
-    timing: "",
-    status: "Quote Request",
+    timing: quotation.eventTime || "",
+    status: isConfirmed ? "Confirmed / Scheduled" : uiStatus,
     source: "Online Portal",
     amount: estimatedAmount,
     isQuotation: true,
@@ -191,7 +283,11 @@ export function mapQuotationToBookingRow(quotation) {
       userId: quotation.userId,
       targetVenueId: quotation.targetVenueId,
       firestoreStatus: quotation.status,
-      eventDetails: { guests: guestCount, date: quotation.eventDate },
+      eventDetails: {
+        guests: guestCount,
+        date: quotation.eventDate,
+        timing: quotation.eventTime,
+      },
       catering: {
         packageName,
         packageId: typeof menu === "object" ? menu?.packageId : undefined,
@@ -199,6 +295,9 @@ export function mapQuotationToBookingRow(quotation) {
         dishes: typeof menu === "object" ? menu?.dishes || [] : [],
       },
       selectedMenu: menu,
+      financials: quotation.financials,
+      eventTitle: quotation.eventTitle,
+      eventLocation: quotation.eventLocation,
     },
   };
 }

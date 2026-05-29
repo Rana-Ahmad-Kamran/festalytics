@@ -8,9 +8,14 @@ import { useVendorVenue } from "@/hooks/useVendorVenue";
 import BookingStats from '@/components/vendor/bookings/BookingStats';
 import BookingFilters from '@/components/vendor/bookings/BookingFilters';
 import {
-    listenToIncomingQuotations,
+    listenToVenueQuotations,
     mapQuotationToBookingRow,
+    updateQuotationStatus,
+    QUOTATION_STATUS,
+    isQuotationActionable,
+    getQuotationById,
 } from "@/lib/firestore/quotations";
+import { quotationToCallingRow } from "@/lib/google/zaydanCallingSheet";
 import {
     submitWalkInBooking,
     listenToVenueBookings,
@@ -251,7 +256,7 @@ const BookingsPage = () => {
             return;
         }
 
-        const unsubscribeQuotations = listenToIncomingQuotations(
+        const unsubscribeQuotations = listenToVenueQuotations(
             venueId,
             (quotations) => {
                 setQuotationBookings(quotations.map(mapQuotationToBookingRow));
@@ -305,69 +310,149 @@ const BookingsPage = () => {
         }
     }, [venueData]);
 
+    const syncQuotationToCallingSheet = async (quotationDoc) => {
+        if (!quotationDoc || venueId !== ZAYDAN_VENUE_SLUG) return;
+        try {
+            await appendZaydanCallingRow(
+                quotationToCallingRow(quotationDoc),
+                venueId
+            );
+        } catch (sheetErr) {
+            console.error("[Bookings] Zaydan calling sheet append failed:", sheetErr);
+            triggerToast(
+                `Booking saved in Firestore, but Google Sheets sync failed: ${sheetErr.message}`,
+                "error"
+            );
+        }
+    };
+
     // Handle status accept, decline or counter operations
     const handleBookingAction = async (actionType) => {
         if (!selectedDetailBooking) return;
         setIsSubmittingAction(true);
-        
+
         try {
             if (!selectedDetailBooking.docId) {
                 triggerToast("Cannot update this record — no database reference.", "error");
                 return;
             }
 
-            const collectionName = selectedDetailBooking.isQuotation ? "quotations" : "bookings";
+            const isQuotation = selectedDetailBooking.isQuotation;
+            const collectionName = isQuotation ? "quotations" : "bookings";
             const bRef = doc(db, collectionName, selectedDetailBooking.docId);
-            
-            if (actionType === 'accept') {
-                // Update booking status to Confirmed
-                await updateDoc(bRef, {
-                    status: 'Confirmed'
-                });
-                
-                // Add eventDate to the venue blockedDates array to lock availability!
-                if (selectedDetailBooking.eventDate) {
-                    const venueRef = doc(db, "venues", venueId);
-                    await updateDoc(venueRef, {
-                        blockedDates: arrayUnion(selectedDetailBooking.eventDate)
+
+            if (actionType === "accept") {
+                const confirmedUiStatus = "Confirmed / Scheduled";
+
+                if (isQuotation) {
+                    await updateQuotationStatus(
+                        selectedDetailBooking.docId,
+                        QUOTATION_STATUS.CONFIRMED,
+                        { confirmedAt: new Date().toISOString() }
+                    );
+                } else {
+                    await updateDoc(bRef, {
+                        status: "confirmed",
+                        confirmedAt: new Date().toISOString(),
                     });
                 }
-                
-                triggerToast("Booking Proposal Approved & Date Locked Successfully!");
-                setSelectedDetailBooking(prev => ({ ...prev, status: 'Confirmed' }));
-            } 
-            else if (actionType === 'decline') {
-                await updateDoc(bRef, {
-                    status: 'Declined'
-                });
-                triggerToast("Booking Proposal Declined.");
-                setSelectedDetailBooking(prev => ({ ...prev, status: 'Declined' }));
-            } 
-            else if (actionType === 'counter') {
-                const newTotal = parseFloat(counterOfferAmount);
-                await updateDoc(bRef, {
-                    status: 'Counter Offer',
-                    'financials.grandTotal': newTotal,
-                    'financials.remainingBalance': newTotal
-                });
-                triggerToast(`Counter offer of Rs. ${newTotal.toLocaleString()} submitted successfully!`);
-                setSelectedDetailBooking(prev => ({
+
+                if (selectedDetailBooking.eventDate) {
+                    try {
+                        const venueRef = doc(db, "venues", venueId);
+                        await updateDoc(venueRef, {
+                            blockedDates: arrayUnion(selectedDetailBooking.eventDate),
+                        });
+                    } catch (venueErr) {
+                        console.error("[Bookings] blockedDates update failed:", venueErr);
+                        triggerToast(
+                            "Booking confirmed, but calendar lock failed. Check venue settings.",
+                            "error"
+                        );
+                    }
+                }
+
+                setSelectedDetailBooking((prev) => ({
                     ...prev,
-                    status: 'Counter Offer',
+                    status: confirmedUiStatus,
+                    raw: {
+                        ...prev.raw,
+                        firestoreStatus: QUOTATION_STATUS.CONFIRMED,
+                    },
+                }));
+
+                triggerToast("Booking confirmed & date locked. Status updated in real time.");
+
+                if (isQuotation) {
+                    try {
+                        const fresh = await getQuotationById(selectedDetailBooking.docId);
+                        if (fresh) await syncQuotationToCallingSheet(fresh);
+                    } catch (sheetLookupErr) {
+                        console.error("[Bookings] post-confirm sheet lookup:", sheetLookupErr);
+                    }
+                } else if (venueId === ZAYDAN_VENUE_SLUG) {
+                    try {
+                        const snap = await getDoc(bRef);
+                        if (snap.exists()) {
+                            await appendZaydanCallingRow(
+                                bookingToCallingRow(snap.data(), snap.id),
+                                venueId
+                            );
+                        }
+                    } catch (sheetErr) {
+                        console.error("[Bookings] walk-in sheet append:", sheetErr);
+                    }
+                }
+            } else if (actionType === "decline") {
+                if (isQuotation) {
+                    await updateQuotationStatus(
+                        selectedDetailBooking.docId,
+                        QUOTATION_STATUS.DECLINED
+                    );
+                } else {
+                    await updateDoc(bRef, { status: "declined" });
+                }
+                triggerToast("Booking proposal declined.");
+                setSelectedDetailBooking((prev) => ({ ...prev, status: "Declined" }));
+            } else if (actionType === "counter") {
+                const newTotal = parseFloat(counterOfferAmount);
+                if (isQuotation) {
+                    await updateQuotationStatus(
+                        selectedDetailBooking.docId,
+                        QUOTATION_STATUS.COUNTER,
+                        {
+                            financials: {
+                                ...(selectedDetailBooking.raw?.financials || {}),
+                                grandTotal: newTotal,
+                                remainingBalance: newTotal,
+                            },
+                        }
+                    );
+                } else {
+                    await updateDoc(bRef, {
+                        status: "counter_offer",
+                        financials: {
+                            ...(selectedDetailBooking.raw?.financials || {}),
+                            grandTotal: newTotal,
+                            remainingBalance: newTotal,
+                        },
+                    });
+                }
+                triggerToast(`Counter offer of Rs. ${newTotal.toLocaleString()} submitted successfully!`);
+                setSelectedDetailBooking((prev) => ({
+                    ...prev,
+                    status: "Counter Offer",
                     amount: newTotal,
                     raw: {
                         ...prev.raw,
                         financials: {
                             ...prev.raw?.financials,
                             grandTotal: newTotal,
-                            remainingBalance: newTotal
-                        }
-                    }
+                            remainingBalance: newTotal,
+                        },
+                    },
                 }));
             }
-
-            // Sync the updated statuses to Google Sheets and reload
-            await handleSyncToSheets();
         } catch (err) {
             console.error("Action error: ", err);
             triggerToast(`Failed to update proposal: ${err.message}`, "error");
@@ -414,7 +499,10 @@ const BookingsPage = () => {
                 st === "counter offer"
             );
         }).length;
-        const confirmed = allBookings.filter((b) => normalize(b.status) === "confirmed").length;
+        const confirmed = allBookings.filter((b) => {
+            const st = normalize(b.status);
+            return st === "confirmed" || st.includes("confirmed");
+        }).length;
         const completed = allBookings.filter((b) => normalize(b.status) === "completed").length;
         const confirmedPct = total > 0 ? Math.round((confirmed / total) * 100) : 0;
         return { total, pending, confirmed, completed, confirmedPct };
@@ -877,9 +965,11 @@ const BookingsPage = () => {
                                                         <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border shadow-sm
                                                             ${booking.status === 'Completed' 
                                                                 ? 'bg-slate-100 text-slate-700 border-slate-200' 
-                                                                : booking.status === 'Quote Request' || booking.status === 'Pending'
+                                                                : isQuotationActionable(booking.status)
                                                                 ? 'bg-amber-500/10 text-amber-600 border-amber-500/20'
-                                                                : 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'}`}>
+                                                                : booking.status === 'Declined'
+                                                                ? 'bg-rose-500/10 text-rose-600 border-rose-500/20'
+                                                                : 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30'}`}>
                                                             {booking.status}
                                                         </span>
                                                     </td>
@@ -1502,8 +1592,10 @@ const BookingsPage = () => {
                                 <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 border border-slate-100">
                                     <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Current Booking Status</span>
                                     <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border shadow-sm
-                                        ${selectedDetailBooking.status === 'Confirmed' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' : 
-                                          selectedDetailBooking.status === 'Pending' || selectedDetailBooking.status === 'Quote Request' ? 'bg-amber-500/10 text-amber-600 border-amber-500/20' :
+                                        ${selectedDetailBooking.status === 'Confirmed / Scheduled' || selectedDetailBooking.status === 'Confirmed'
+                                          ? 'bg-emerald-600 text-white border-emerald-700' 
+                                          : isQuotationActionable(selectedDetailBooking.status)
+                                          ? 'bg-amber-500/10 text-amber-600 border-amber-500/20' :
                                           selectedDetailBooking.status === 'Counter Offer' ? 'bg-pink-500/10 text-pink-600 border-pink-500/20' :
                                           selectedDetailBooking.status === 'Declined' ? 'bg-rose-500/10 text-rose-600 border-rose-500/20' :
                                           'bg-slate-100 text-slate-700 border-slate-200'}`}>
@@ -1649,7 +1741,7 @@ const BookingsPage = () => {
                             {/* Footer operational buttons actions panel */}
                             <div className="p-6 border-t border-outline-variant bg-slate-50 space-y-4">
                                 {/* If status is Pending or Counter Offer or Quote Request, show operational flow */}
-                                {(selectedDetailBooking.status === 'Pending' || selectedDetailBooking.status === 'Counter Offer' || selectedDetailBooking.status === 'Quote Request') ? (
+                                {isQuotationActionable(selectedDetailBooking.status) ? (
                                     <div className="space-y-3.5">
                                         {/* Inline Counter Price Form */}
                                         <div className="bg-white p-4 rounded-2xl border border-outline-variant/60 shadow-sm space-y-3 text-left">
@@ -1693,9 +1785,14 @@ const BookingsPage = () => {
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="text-center p-2">
-                                        <p className="text-[10px] text-outline font-black uppercase tracking-wider">
-                                            ✓ Proposal is marked as {selectedDetailBooking.status}
+                                    <div className="text-center p-3">
+                                        <span className="inline-flex items-center justify-center px-5 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-emerald-600 text-white border border-emerald-700 shadow-sm">
+                                            {selectedDetailBooking.status === 'Confirmed / Scheduled' || selectedDetailBooking.status === 'Confirmed'
+                                                ? 'Confirmed / Scheduled'
+                                                : selectedDetailBooking.status}
+                                        </span>
+                                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-3">
+                                            Accept & decline actions are closed for this booking
                                         </p>
                                     </div>
                                 )}
