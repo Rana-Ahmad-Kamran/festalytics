@@ -74,23 +74,23 @@ function WhyChooseUs() {
 
   return (
     <section className="py-24 px-8 bg-[#f8f9fa]">
-      <div className="max-w-[1200px] mx-auto">
+      <div className="max-w-7xl mx-auto">
         <h2 className="text-center text-[3rem] font-bold mb-12 text-[#1a202c] max-md:text-[2.5rem] max-sm:text-[2rem]">
           Why Choose Us
         </h2>
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-8 md:gap-12">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8">
           {cards.map(({ icon: Icon, title, description }) => (
             <div
               key={title}
-              className="bg-white p-8 md:p-10 rounded-[20px] text-center shadow-[0_4px_6px_rgba(0,0,0,0.1)] transition-all duration-300 md:hover:-translate-y-2.5 md:hover:shadow-[0_10px_30px_rgba(0,0,0,0.15)]"
+              className="bg-white p-6 lg:p-8 rounded-[20px] text-center shadow-[0_4px_6px_rgba(0,0,0,0.1)] transition-all duration-300 md:hover:-translate-y-2.5 md:hover:shadow-[0_10px_30px_rgba(0,0,0,0.15)]"
             >
-              <div className="text-[3.5rem] mb-4 flex items-center justify-center text-[#D6336C]">
+              <div className="text-[2.75rem] lg:text-[3rem] mb-4 flex items-center justify-center text-[#D6336C]">
                 <Icon />
               </div>
-              <h3 className="text-xl md:text-2xl font-semibold mb-4 text-[#1a202c] leading-snug break-words">
+              <h3 className="text-lg lg:text-xl font-semibold mb-3 text-[#1a202c] leading-snug">
                 {title}
               </h3>
-              <p className="text-[#718096] leading-relaxed">{description}</p>
+              <p className="text-sm lg:text-[15px] text-[#718096] leading-relaxed">{description}</p>
             </div>
           ))}
         </div>
