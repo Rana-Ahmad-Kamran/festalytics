@@ -1,9 +1,8 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { ArrowLeft, Search, MapPin } from 'lucide-react';
-import { motion } from 'framer-motion';
+import React, { useState, useMemo, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { ArrowLeft, Search, MapPin, Users, PartyPopper } from 'lucide-react';
 import PublicSiteHeader from './PublicSiteHeader';
 import Footer from './Footer';
 import HallCard from './HallCard';
@@ -14,12 +13,54 @@ import {
   buildVenueImagePath,
   mergePublicVenues,
 } from "@/lib/publicVenues";
+import { filterVenues } from "@/lib/venueFilters";
+import { lahoreAreas } from "@/data/lahoreAreas";
+import {
+  heroEventTypeOptions,
+  heroGuestCountOptions,
+} from "@/data/heroSearchOptions";
 
-const AllVenues = () => {
+function resolveLocationFromParam(loc) {
+  if (!loc) return 'All';
+  const matched = lahoreAreas.find(
+    (a) =>
+      a.toLowerCase() === loc.toLowerCase() ||
+      a.toLowerCase().includes(loc.toLowerCase()) ||
+      loc.toLowerCase().includes(a.toLowerCase())
+  );
+  return matched || 'All';
+}
+
+function resolveEventFromParam(event) {
+  if (!event) return '';
+  const match = heroEventTypeOptions.find(
+    (opt) =>
+      opt.label.toLowerCase() === event.toLowerCase() ||
+      opt.value.toLowerCase() === event.toLowerCase()
+  );
+  return match?.value || '';
+}
+
+function resolveGuestsFromParam(guests) {
+  if (!guests) return '';
+  const match = heroGuestCountOptions.find((opt) => opt.value === guests);
+  return match?.value || guests;
+}
+
+const AllVenuesContent = () => {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedLocation, setSelectedLocation] = useState('All');
+  const [selectedEvent, setSelectedEvent] = useState('');
+  const [selectedGuests, setSelectedGuests] = useState('');
   const [dbVenuesMap, setDbVenuesMap] = useState({});
+
+  useEffect(() => {
+    setSelectedLocation(resolveLocationFromParam(searchParams.get('location')));
+    setSelectedEvent(resolveEventFromParam(searchParams.get('event')));
+    setSelectedGuests(resolveGuestsFromParam(searchParams.get('guests')));
+  }, [searchParams]);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(
@@ -43,29 +84,42 @@ const AllVenues = () => {
     return mergePublicVenues(hallsData, dbVenuesMap);
   }, [dbVenuesMap]);
 
-  // Extract unique locations for the filter
-  const locations = useMemo(() => {
-    const locs = mergedHalls.map(hall => hall.area || 'Lahore').filter(Boolean);
-    const uniqueLocs = [...new Set(locs)].sort();
-    return ['All', ...uniqueLocs];
-  }, [mergedHalls]);
+  const locations = useMemo(() => ['All', ...lahoreAreas], []);
 
-  const filteredHalls = mergedHalls.filter(hall => {
-    const matchesSearch =
-      (hall.hall_name && hall.hall_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (hall.full_address && hall.full_address.toLowerCase().includes(searchTerm.toLowerCase()));
+  const filteredHalls = useMemo(
+    () =>
+      filterVenues(mergedHalls, {
+        searchTerm,
+        location: selectedLocation,
+        eventType: selectedEvent,
+        guestCount: selectedGuests,
+        dbVenuesMap,
+      }),
+    [mergedHalls, searchTerm, selectedLocation, selectedEvent, selectedGuests, dbVenuesMap]
+  );
 
-    const matchesLocation = selectedLocation === 'All' || (hall.area || 'Lahore') === selectedLocation;
+  const hasActiveFilters =
+    searchTerm.trim() ||
+    selectedLocation !== 'All' ||
+    selectedEvent ||
+    selectedGuests;
 
-    return matchesSearch && matchesLocation;
-  });
+  const clearFilters = () => {
+    setSearchTerm('');
+    setSelectedLocation('All');
+    setSelectedEvent('');
+    setSelectedGuests('');
+    router.replace('/all-venues');
+  };
+
+  const selectClass =
+    'w-full pl-10 pr-10 py-3 appearance-none border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#D6336C] focus:border-transparent outline-none transition-all bg-white text-sm';
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans text-slate-800">
       <PublicSiteHeader />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        {/* Header & Back Button */}
         <div className="flex items-center gap-4 mb-8">
           <button
             onClick={() => router.back()}
@@ -79,9 +133,8 @@ const AllVenues = () => {
           </div>
         </div>
 
-        {/* Search & Filters */}
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 mb-8 flex flex-col md:flex-row gap-4">
-          <div className="relative flex-1">
+        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 mb-8 space-y-4">
+          <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
               <Search className="h-5 w-5 text-gray-400" />
             </div>
@@ -94,45 +147,87 @@ const AllVenues = () => {
             />
           </div>
 
-          <div className="relative w-full md:w-64 shrink-0">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <MapPin className="h-5 w-5 text-gray-400" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <MapPin className="h-5 w-5 text-gray-400" />
+              </div>
+              <select
+                value={selectedLocation}
+                onChange={(e) => setSelectedLocation(e.target.value)}
+                className={selectClass}
+              >
+                {locations.map((loc) => (
+                  <option key={loc} value={loc}>
+                    {loc === 'All' ? 'All Areas' : loc}
+                  </option>
+                ))}
+              </select>
             </div>
-            <select
-              value={selectedLocation}
-              onChange={(e) => setSelectedLocation(e.target.value)}
-              className="w-full pl-10 pr-10 py-3 appearance-none border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#D6336C] focus:border-transparent outline-none transition-all bg-white"
-            >
-              {locations.map(loc => (
-                <option key={loc} value={loc}>{loc}</option>
-              ))}
-            </select>
-            <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
-              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <PartyPopper className="h-5 w-5 text-gray-400" />
+              </div>
+              <select
+                value={selectedEvent}
+                onChange={(e) => setSelectedEvent(e.target.value)}
+                className={selectClass}
+              >
+                <option value="">All Event Types</option>
+                {heroEventTypeOptions
+                  .filter((opt) => opt.value)
+                  .map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+              </select>
+            </div>
+
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Users className="h-5 w-5 text-gray-400" />
+              </div>
+              <select
+                value={selectedGuests}
+                onChange={(e) => setSelectedGuests(e.target.value)}
+                className={selectClass}
+              >
+                {heroGuestCountOptions.map((opt) => (
+                  <option key={opt.value || 'all-guests'} value={opt.value}>
+                    {opt.value ? opt.label : 'Any Guest Count'}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
         </div>
 
-        {/* Results Header */}
         <div className="mb-6 flex justify-between items-center">
           <h2 className="text-xl font-bold text-gray-900">
             {filteredHalls.length} {filteredHalls.length === 1 ? 'Venue' : 'Venues'} Found
           </h2>
+          {hasActiveFilters && (
+            <button
+              onClick={clearFilters}
+              className="text-sm text-[#D6336C] font-semibold hover:underline"
+            >
+              Clear filters
+            </button>
+          )}
         </div>
 
-        {/* Grid Layout */}
         {filteredHalls.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {filteredHalls.map((hall, index) => {
-              return (
-                <HallCard
-                  key={hall.hall_id || index}
-                  venue={hall}
-                  index={index}
-                  imagePath={buildVenueImagePath(hall)}
-                />
-              );
-            })}
+            {filteredHalls.map((hall, index) => (
+              <HallCard
+                key={hall.hall_id || index}
+                venue={hall}
+                index={index}
+                imagePath={buildVenueImagePath(hall)}
+              />
+            ))}
           </div>
         ) : (
           <div className="text-center py-20 bg-white rounded-3xl border border-gray-100 shadow-sm">
@@ -140,9 +235,9 @@ const AllVenues = () => {
               <Search className="w-8 h-8" />
             </div>
             <h3 className="text-lg font-bold text-gray-900 mb-1">No venues found</h3>
-            <p className="text-gray-500">Try adjusting your search or location filter.</p>
+            <p className="text-gray-500">Try adjusting your search or filters.</p>
             <button
-              onClick={() => { setSearchTerm(''); setSelectedLocation('All'); }}
+              onClick={clearFilters}
               className="mt-4 text-[#D6336C] font-semibold hover:underline"
             >
               Clear filters
@@ -155,5 +250,11 @@ const AllVenues = () => {
     </div>
   );
 };
+
+const AllVenues = () => (
+  <Suspense fallback={<div className="min-h-screen bg-gray-50 flex items-center justify-center">Loading venues…</div>}>
+    <AllVenuesContent />
+  </Suspense>
+);
 
 export default AllVenues;

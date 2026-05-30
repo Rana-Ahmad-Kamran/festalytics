@@ -1,165 +1,400 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { FaBolt, FaRocket, FaStar, FaLightbulb, FaCalendarCheck, FaChartLine, FaUserCog, FaArrowRight } from 'react-icons/fa'
-import image1 from '../assets/image1.jpg'
-import image2 from '../assets/image2.jpg'
+import {
+  FaLightbulb,
+  FaCalendarCheck,
+  FaChartLine,
+  FaUserCog,
+} from 'react-icons/fa'
+import { collection, onSnapshot } from 'firebase/firestore'
+import { db } from '@/firebase'
+import hallsData from '../data/halls.json'
+import { lahoreAreas } from '../data/lahoreAreas'
+import {
+  heroEventTypeOptions,
+  heroGuestCountOptions,
+} from '../data/heroSearchOptions'
+import { EVENT_TYPES } from './create-event/data'
+import HeroSearchSelect from './HeroSearchSelect'
+import HallCard from './HallCard'
+import {
+  mergePublicVenues,
+  buildVenueImagePath,
+  getPublicVenueDocId,
+} from '@/lib/publicVenues'
 
-function LandingPage({ onLoginClick }) {
-  const [isImage1, setIsImage1] = useState(true)
-  const router = useRouter()
+const HERO_IMAGE =
+  'https://lh3.googleusercontent.com/aida-public/AB6AXuCrle1ZsOfOsrKjxDj9yLKbA-1Uc8ZDUfwudcRnLIyzJWFzgzBWzQ5Xvsd144wr_gJGWgcaUYcDptpYgNUbdb5yamz07dw5ZTb8_0e-Q23bdZVQE0U8l8p8KvQTe8sQ6H8oWwKFEwKy3X_BlNtw5EIFJPe8m7eH3C8VCXvHMLL9ThvmT3qqz4T5k4dlTKX5zn-yRSfcAHPlsNfheeK89uIEhL8i0EY0IXZOoZikfkMdnXfvODTtinIG64Uy7YNzV_t1hGtrIc5Ii8Q'
 
-  const handleImageToggle = () => {
-    setIsImage1(prev => !prev)
-  }
+const INNOVATION_IMAGES = {
+  aiPlanner:
+    'https://lh3.googleusercontent.com/aida-public/AB6AXuCwCmCLA8sqaiLkVJr0R_j3JjFuTPmOsbzpvfq571SNl2C8z3y4hNyHnM4lelxavVdF8VinKErGutlT5Mwype2ylhCAEp8vZe1sT3zYnU7lPZ9MbmnqfL-6p_eptAyIqCYoE8zW_EDTSWyadAUuXYg8f_QAZRoLrqmMdJQqm5InpTCz9s2NQV_YlfzB0Z2zxU10JgltKy5ja33hWK9m6tokxc8W6k71evPDaCtgQXKAJRObSMrdZCTckzi3ijDmItrx1iMWBjZHGIQ',
+  decor:
+    'https://lh3.googleusercontent.com/aida-public/AB6AXuC2Ggb-JlfCKIc1Ao85mpfidY1wJirf2xIXIEztc8Cdt_HWoIeHERDpo3pwHF9eCfudzcw9-hnAsA6q_nA6UtEn1xYKRQCYPu-ny2C7RPnLRONmaEx06iS7OYY8RXiNAxTEMSQWkELYA0Shb5RWBZpDsKqYReiRSv8GTYVc695W2-30Fk2e99xvrfptCqQEkmJFaPh7Xqnl6kW2olUCvMXrn77QpwNsZz-3N2qsEV1iJm9CcE3nWYt6pBdl7I3pTURVUcLGuQT1Yxo',
+  venueMap:
+    'https://lh3.googleusercontent.com/aida-public/AB6AXuBKYuqmKTYwSSM8twnXK4l8t_1khB78fiYjSD_hfXgXOEaaIYO89XHZJWt0ebUOWPT0Pa0sonkqkcXvMQlYkbx4Rqxj2IdUHBMb_tkb0tPCJmQD5eF35_jhihiPzh-Mvncdqz6QW4LpCEsjSawyZVw8KeuTmQAribkjeDLBgIYCQ4nJJ69_1_9g9XGvIPt3tZFoW7r5Z_RbXCumo-2XxrWzsbLmYdyUMp0HXGwy66JUF4pUgRCo3yO9SmgwENZfMG7F2akZHMly66M',
+}
+
+const VENUE_MAP_BANNER_IMAGE =
+  'https://lh3.googleusercontent.com/aida-public/AB6AXuB7VBvm4j6t_VyCJ-BOGdeIRz6-E6nipdZ89RXOj02Q9T4zuUISytF4bkjGeQzV8tmrhDkHmjdiQlSb8CF6xSk-BI6oLPUcAKMTNt1QjhpjObAfk8EBwnuFodgdXTXFTtLC9a7Pov6EiZXW6Hmye6yyRLP0cVnXHPiwofT2McpafOGT2VAHspEVSmsU9tqGSfzdkohZKFUuBssIvDuc514NtjUk05HkcGN62XUODsqx7QGJvHh1npbRUOOUxG7Ne_tPvgOdfyi1bPo'
+
+function venueListKey(hall) {
+  return getPublicVenueDocId(hall) || hall.hall_id || hall.hall_name
+}
+
+function WhyChooseUs() {
+  const cards = [
+    {
+      icon: FaLightbulb,
+      title: 'Smart Recommendations',
+      description:
+        'Get AI-powered suggestions for venues, décor, and services that perfectly match your event style.',
+    },
+    {
+      icon: FaCalendarCheck,
+      title: 'Seamless Booking',
+      description:
+        'Manage vendors, confirm bookings, and track your event plan all in one place.',
+    },
+    {
+      icon: FaChartLine,
+      title: 'Cost Efficiency',
+      description:
+        'Automatically calculate costs and optimize your budget with our intelligent tools.',
+    },
+    {
+      icon: FaUserCog,
+      title: 'Personalized Experience',
+      description:
+        'Create events tailored to your preferences with AI insights and interactive planning features.',
+    },
+  ]
 
   return (
-    <div className="w-full overflow-x-hidden">
-      {/* Hero Section */}
-      <section
-        className="min-h-[90vh] flex items-center justify-center relative overflow-visible cursor-pointer before:content-[''] before:absolute before:inset-0 before:bg-gradient-to-b before:from-black/50 before:to-black/60 before:z-[1] after:content-[''] after:absolute after:inset-0 after:bg-[url('data:image/svg+xml,<svg_width=%22100%22_height=%22100%22_xmlns=%22http://www.w3.org/2000/svg%22><defs><pattern_id=%22grid%22_width=%22100%22_height=%22100%22_patternUnits=%22userSpaceOnUse%22><path_d=%22M_100_0_L_0_0_0_100%22_fill=%22none%22_stroke=%22rgba(255,255,255,0.1)%22_stroke-width=%221%22/></pattern></defs><rect_width=%22100%%22_height=%22100%%22_fill=%22url(%23grid)%22/></svg>')] after:opacity-20 after:animate-[gridMove_20s_linear_infinite] after:z-[1]"
-        onClick={handleImageToggle}
-      >
-        {/* Background image layers for smooth fade transition */}
-        <div
-          className={`absolute inset-0 bg-cover bg-center bg-no-repeat transition-opacity duration-[800ms] ease-in-out z-0 ${isImage1 ? 'opacity-100' : 'opacity-0'}`}
-          style={{ backgroundImage: `url(${image1.src})` }}
-        ></div>
-        <div
-          className={`absolute inset-0 bg-cover bg-center bg-no-repeat transition-opacity duration-[800ms] ease-in-out z-0 ${!isImage1 ? 'opacity-100' : 'opacity-0'}`}
-          style={{ backgroundImage: `url(${image2.src})` }}
-        ></div>
-        <div className="max-w-[1200px] my-[50px] mx-auto p-8 grid grid-cols-1 md:grid-cols-2 gap-24 items-center relative z-[2] max-lg:grid-cols-1 max-lg:text-center max-lg:gap-12">
-          <div className="text-white">
-            <h1 className="text-[4rem] font-extrabold leading-[1.2] mb-6 flex flex-col max-md:text-[3rem] max-sm:text-[2.5rem]">
-              <span className="block opacity-0 translate-y-[30px] animate-[fadeInUp_0.8s_ease_forwards]" style={{ animationDelay: '0.1s' }}>
-                Festalytics
-              </span>
-              <span className="block opacity-0 translate-y-[30px] animate-[fadeInUp_0.8s_ease_forwards] bg-gradient-to-tr from-[#f093fb] to-[#D6336C] bg-clip-text text-transparent" style={{ animationDelay: '0.3s' }}>
-                AI-Powered Event Manager
-              </span>
+    <section className="py-24 px-8 bg-[#f8f9fa]">
+      <div className="max-w-[1200px] mx-auto">
+        <h2 className="text-center text-[3rem] font-bold mb-12 text-[#1a202c] max-md:text-[2.5rem] max-sm:text-[2rem]">
+          Why Choose Us
+        </h2>
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-8 md:gap-12">
+          {cards.map(({ icon: Icon, title, description }) => (
+            <div
+              key={title}
+              className="bg-white p-8 md:p-10 rounded-[20px] text-center shadow-[0_4px_6px_rgba(0,0,0,0.1)] transition-all duration-300 md:hover:-translate-y-2.5 md:hover:shadow-[0_10px_30px_rgba(0,0,0,0.15)]"
+            >
+              <div className="text-[3.5rem] mb-4 flex items-center justify-center text-[#D6336C]">
+                <Icon />
+              </div>
+              <h3 className="text-xl md:text-2xl font-semibold mb-4 text-[#1a202c] leading-snug break-words">
+                {title}
+              </h3>
+              <p className="text-[#718096] leading-relaxed">{description}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function LandingPage() {
+  const router = useRouter()
+  const [location, setLocation] = useState('')
+  const [eventType, setEventType] = useState('')
+  const [guestCount, setGuestCount] = useState('')
+  const [dbVenuesMap, setDbVenuesMap] = useState({})
+
+  useEffect(() => {
+    const unsub = onSnapshot(
+      collection(db, 'venues'),
+      (snap) => {
+        const map = {}
+        snap.forEach((doc) => {
+          map[doc.id] = doc.data()
+        })
+        setDbVenuesMap(map)
+      },
+      (err) => console.error('Home venues fetch:', err)
+    )
+    return () => unsub()
+  }, [])
+
+  const mergedHalls = useMemo(() => {
+    return mergePublicVenues(hallsData, dbVenuesMap)
+  }, [dbVenuesMap])
+
+  const featuredHalls = useMemo(() => mergedHalls.slice(0, 8), [mergedHalls])
+
+  const locationOptions = useMemo(
+    () => [
+      { value: '', label: 'Select Lahore area' },
+      ...lahoreAreas.map((area) => ({ value: area, label: area })),
+    ],
+    []
+  )
+
+  const handleHeroSearch = (e) => {
+    e.preventDefault()
+    const params = new URLSearchParams()
+    if (location.trim()) params.set('location', location.trim())
+    if (eventType.trim()) {
+      const label = EVENT_TYPES.find((t) => t.id === eventType)?.label ?? eventType
+      params.set('event', label)
+    }
+    if (guestCount.trim()) params.set('guests', guestCount.trim())
+    const qs = params.toString()
+    router.push(qs ? `/all-venues?${qs}` : '/all-venues')
+  }
+
+  const innovationCards = [
+    {
+      title: 'AI Event Planner',
+      description: 'Let our AI generate your complete event itinerary and package instantly.',
+      href: '/ai-planner',
+      image: INNOVATION_IMAGES.aiPlanner,
+      shadow: 'candy-shadow-primary',
+      border: 'border-primary-fixed',
+    },
+    {
+      title: 'Decor Matcher',
+      description: 'Upload a Pinterest mood board and find vendors who match your vibe perfectly.',
+      href: '/find-decor',
+      image: INNOVATION_IMAGES.decor,
+      shadow: 'candy-shadow-secondary',
+      border: 'border-secondary-container',
+    },
+    {
+      title: 'Venue Map',
+      description: 'Discover and navigate to top-rated venues near your exact location in real-time.',
+      href: '/service-discovery',
+      image: INNOVATION_IMAGES.venueMap,
+      shadow: 'candy-shadow-tertiary',
+      border: 'border-tertiary-fixed',
+    },
+  ]
+
+  return (
+    <div className="w-full overflow-x-hidden text-on-background bg-background">
+      {/* Hero */}
+      <section className="relative min-h-[85vh] flex items-center justify-center">
+        <div className="absolute inset-0 z-0 overflow-hidden">
+          <img
+            src={HERO_IMAGE}
+            alt=""
+            className="w-full h-full object-cover opacity-60 scale-105"
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-surface/20 via-surface/40 to-surface" />
+        </div>
+
+        <div className="relative z-10 max-w-5xl mx-auto px-6 text-center space-y-12 py-16">
+          <div className="space-y-6">
+            <h1 className="text-4xl sm:text-5xl md:text-7xl font-black tracking-tight text-on-background leading-tight">
+              Plan Your Perfect Event in{' '}
+              <span className="text-primary italic">Minutes</span>, Not Months
             </h1>
-            <p className="text-xl leading-[1.6] mb-12 opacity-90 w-full max-w-[500px] break-words ml-auto mr-auto lg:ml-0 opacity-0 translate-y-[30px] animate-[fadeInUp_0.8s_ease_forwards] max-sm:text-lg" style={{ animationDelay: '0.5s' }}>
-              Create unforgettable events with smart planning, AI-powered recommendations, and seamless vendor management
+            <p className="text-lg md:text-2xl text-on-surface-variant max-w-2xl mx-auto font-medium">
+              Discover elite venues and intelligent tools that bring your vision to life effortlessly.
             </p>
-            <div className="flex gap-4 flex-wrap opacity-0 translate-y-[30px] animate-[fadeInUp_0.8s_ease_forwards] max-sm:flex-row max-sm:w-full max-sm:justify-center" style={{ animationDelay: '0.7s' }}>
-              <button
-                className="py-3.5 px-8 border-none rounded-[50px] text-base font-semibold cursor-pointer transition-all duration-300 no-underline inline-block bg-white text-[#667eea] shadow-[0_4px_15px_rgba(0,0,0,0.2)] hover:bg-[#C2255C] hover:text-white hover:-translate-y-0.5 hover:shadow-[0_6px_20px_rgba(214,51,108,0.4)] active:bg-[#C2255C] active:text-white active:shadow-[0_6px_20px_rgba(214,51,108,0.4)] active:-translate-y-0.5 max-sm:w-1/2 max-sm:flex-none"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  router.push('/all-venues')
-                }}
-              >
-                Explore Venues
-              </button>
-              <button
-                className="py-3.5 px-8 rounded-[50px] text-base font-semibold cursor-pointer transition-all duration-300 no-underline inline-block bg-transparent text-white border-2 border-white md:hover:bg-[#C2255C] md:hover:text-white md:hover:border-[#C2255C] md:hover:-translate-y-0.5 active:bg-[#C2255C] active:text-white active:border-[#C2255C] active:-translate-y-0.5 max-sm:w-1/2 max-sm:flex-none"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onLoginClick()
-                }}
-              >
-                Log in
-              </button>
-              <button
-                className="py-3.5 px-8 rounded-[50px] text-base font-semibold cursor-pointer transition-all duration-300 no-underline inline-block bg-transparent text-white border-2 border-white/60 md:hover:bg-white/10 md:hover:-translate-y-0.5 active:bg-white/10 active:-translate-y-0.5 max-sm:w-full max-sm:flex-none"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  router.push('/signup')
-                }}
-              >
-                Sign up
-              </button>
-            </div>
           </div>
-          <div className="relative min-h-[300px] flex items-center justify-center gap-6 flex-wrap w-full opacity-0 animate-[fadeIn_1s_ease_forwards] max-md:h-[300px] max-md:mt-8" style={{ animationDelay: '0.9s' }}>
-            <div className="relative bg-white/15 backdrop-blur-xl border border-white/20 rounded-[20px] p-5 shadow-[0_10px_40px_rgba(0,0,0,0.2)] text-center animate-[float_6s_ease-in-out_infinite] transition-all duration-300 cursor-pointer md:hover:bg-gradient-to-tr md:hover:from-[#f093fb] md:hover:to-[#D6336C] md:hover:shadow-[0_15px_50px_rgba(214,51,108,0.4)] md:hover:scale-105 active:bg-gradient-to-tr active:from-[#f093fb] active:to-[#D6336C] active:shadow-[0_15px_50px_rgba(214,51,108,0.4)] active:scale-105 group w-[130px] [animation-delay:0s] max-md:p-6">
-              <div className="text-[2rem] mb-2 flex items-center justify-center text-white transition-colors duration-300 md:group-hover:text-white group-active:text-white max-md:text-[2rem]">
-                <FaBolt />
-              </div>
-              <h3 className="m-0 text-white text-base font-semibold transition-colors duration-300 shadow-sm md:group-hover:text-white group-active:text-white">Fast</h3>
-            </div>
-            <div className="relative bg-white/15 backdrop-blur-xl border border-white/20 rounded-[20px] p-5 shadow-[0_10px_40px_rgba(0,0,0,0.2)] text-center animate-[float_6s_ease-in-out_infinite] transition-all duration-300 cursor-pointer md:hover:bg-gradient-to-tr md:hover:from-[#f093fb] md:hover:to-[#D6336C] md:hover:shadow-[0_15px_50px_rgba(214,51,108,0.4)] md:hover:scale-105 active:bg-gradient-to-tr active:from-[#f093fb] active:to-[#D6336C] active:shadow-[0_15px_50px_rgba(214,51,108,0.4)] active:scale-105 group w-[130px] [animation-delay:2s] max-md:p-6">
-              <div className="text-[2rem] mb-2 flex items-center justify-center text-white transition-colors duration-300 md:group-hover:text-white group-active:text-white max-md:text-[2rem]">
-                <FaRocket />
-              </div>
-              <h3 className="m-0 text-white text-base font-semibold transition-colors duration-300 shadow-sm md:group-hover:text-white group-active:text-white">Powerful</h3>
-            </div>
-            <div className="relative bg-white/15 backdrop-blur-xl border border-white/20 rounded-[20px] p-5 shadow-[0_10px_40px_rgba(0,0,0,0.2)] text-center animate-[float_6s_ease-in-out_infinite] transition-all duration-300 cursor-pointer md:hover:bg-gradient-to-tr md:hover:from-[#f093fb] md:hover:to-[#D6336C] md:hover:shadow-[0_15px_50px_rgba(214,51,108,0.4)] md:hover:scale-105 active:bg-gradient-to-tr active:from-[#f093fb] active:to-[#D6336C] active:shadow-[0_15px_50px_rgba(214,51,108,0.4)] active:scale-105 group w-[130px] [animation-delay:4s] max-md:p-6">
-              <div className="text-[2rem] mb-2 flex items-center justify-center text-white transition-colors duration-300 md:group-hover:text-white group-active:text-white max-md:text-[2rem]">
-                <FaStar />
-              </div>
-              <h3 className="m-0 text-white text-base font-semibold transition-colors duration-300 shadow-sm md:group-hover:text-white group-active:text-white">Modern</h3>
-            </div>
-          </div>
-        </div>
-      </section>
 
-      {/* Features Section */}
-      <section className="py-24 px-8 bg-[#f8f9fa]">
-        <div className="max-w-[1200px] mx-auto">
-          <h2 className="text-center text-[3rem] font-bold mb-12 text-[#1a202c] opacity-0 translate-y-[30px] animate-[fadeInUp_0.8s_ease_forwards] max-md:text-[2.5rem] max-sm:text-[2rem]">Why Choose Us</h2>
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(250px,1fr))] gap-16 max-sm:grid-cols-1">
-            <div className="bg-white p-10 rounded-[20px] text-center shadow-[0_4px_6px_rgba(0,0,0,0.1)] transition-all duration-300 md:hover:-translate-y-2.5 md:hover:shadow-[0_10px_30px_rgba(0,0,0,0.15)] active:-translate-y-2.5 active:shadow-[0_10px_30px_rgba(0,0,0,0.15)] opacity-0 translate-y-[30px] animate-[fadeInUp_0.8s_ease_forwards]" style={{ animationDelay: '0.1s' }}>
-              <div className="text-[3.5rem] mb-4 flex items-center justify-center text-[#D6336C]">
-                <FaLightbulb />
-              </div>
-              <h3 className="text-2xl font-semibold mb-4 text-[#1a202c]">Smart Recommendations</h3>
-              <p className="text-[#718096] leading-relaxed">Get AI-powered suggestions for venues, décor, and services that perfectly match your event style.</p>
-            </div>
-            <div className="bg-white p-10 rounded-[20px] text-center shadow-[0_4px_6px_rgba(0,0,0,0.1)] transition-all duration-300 md:hover:-translate-y-2.5 md:hover:shadow-[0_10px_30px_rgba(0,0,0,0.15)] active:-translate-y-2.5 active:shadow-[0_10px_30px_rgba(0,0,0,0.15)] opacity-0 translate-y-[30px] animate-[fadeInUp_0.8s_ease_forwards]" style={{ animationDelay: '0.2s' }}>
-              <div className="text-[3.5rem] mb-4 flex items-center justify-center text-[#D6336C]">
-                <FaCalendarCheck />
-              </div>
-              <h3 className="text-2xl font-semibold mb-4 text-[#1a202c]">Seamless Booking</h3>
-              <p className="text-[#718096] leading-relaxed">Manage vendors, confirm bookings, and track your event plan all in one place.</p>
-            </div>
-            <div className="bg-white p-10 rounded-[20px] text-center shadow-[0_4px_6px_rgba(0,0,0,0.1)] transition-all duration-300 md:hover:-translate-y-2.5 md:hover:shadow-[0_10px_30px_rgba(0,0,0,0.15)] active:-translate-y-2.5 active:shadow-[0_10px_30px_rgba(0,0,0,0.15)] opacity-0 translate-y-[30px] animate-[fadeInUp_0.8s_ease_forwards]" style={{ animationDelay: '0.3s' }}>
-              <div className="text-[3.5rem] mb-4 flex items-center justify-center text-[#D6336C]">
-                <FaChartLine />
-              </div>
-              <h3 className="text-2xl font-semibold mb-4 text-[#1a202c]">Cost Efficiency</h3>
-              <p className="text-[#718096] leading-relaxed">Automatically calculate costs and optimize your budget with our intelligent tools.</p>
-            </div>
-            <div className="bg-white p-10 rounded-[20px] text-center shadow-[0_4px_6px_rgba(0,0,0,0.1)] transition-all duration-300 md:hover:-translate-y-2.5 md:hover:shadow-[0_10px_30px_rgba(0,0,0,0.15)] active:-translate-y-2.5 active:shadow-[0_10px_30px_rgba(0,0,0,0.15)] opacity-0 translate-y-[30px] animate-[fadeInUp_0.8s_ease_forwards]" style={{ animationDelay: '0.4s' }}>
-              <div className="text-[3.5rem] mb-4 flex items-center justify-center text-[#D6336C]">
-                <FaUserCog />
-              </div>
-              <h3 className="text-2xl font-semibold mb-4 text-[#1a202c]">Personalized Experience</h3>
-              <p className="text-[#718096] leading-relaxed">Create events tailored to your preferences with AI insights and interactive planning features.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="py-24 px-8 bg-gradient-to-br from-[#581c87] to-[#4c1d95] relative overflow-hidden before:content-[''] before:absolute before:inset-0 before:bg-black/40 before:z-[1]">
-        <div className="max-w-[800px] mx-auto bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl py-16 px-12 text-center relative z-[2] opacity-0 translate-y-[30px] animate-[fadeInUp_0.8s_ease_forwards] max-md:p-8 max-sm:p-6">
-          <h2 className="text-[3.5rem] font-extrabold mb-4 text-white leading-[1.2] max-md:text-[2.5rem] max-sm:text-[2rem]">Ready to Get Started?</h2>
-          <p className="text-xl mb-10 text-gray-200/90 leading-relaxed max-md:text-lg max-sm:text-base">Join thousands of satisfied customers today</p>
-          <button
-            className="py-4.5 px-10 bg-[#D6336C] text-white border-none rounded-[50px] text-lg font-semibold cursor-pointer transition-all duration-300 inline-flex items-center gap-3 shadow-[0_4px_15px_rgba(214,51,108,0.4)] group md:hover:bg-[#C2255C] md:hover:-translate-y-0.5 md:hover:shadow-[0_6px_20px_rgba(214,51,108,0.6)] active:bg-[#C2255C] active:-translate-y-0.5 active:shadow-[0_6px_20px_rgba(214,51,108,0.6)] max-sm:py-4 max-sm:px-8 max-sm:text-base"
-            onClick={() => router.push('/all-venues')}
+          <form
+            onSubmit={handleHeroSearch}
+            className="relative z-20 bg-surface-container-lowest p-2 sm:p-2.5 rounded-full shadow-2xl candy-shadow-primary max-w-4xl mx-auto flex flex-col md:flex-row md:items-center gap-2 md:gap-0 border border-outline-variant/30"
           >
-            Explore Venues
-            <FaArrowRight className="transition-transform duration-300 md:group-hover:translate-x-1 group-active:translate-x-1" />
-          </button>
-          <div className="mt-8 flex flex-col items-center gap-2">
-            <div className="flex gap-1 text-[#fbbf24] text-xl">
-              <FaStar />
-              <FaStar />
-              <FaStar />
-              <FaStar />
-              <FaStar />
+            <div className="flex-1 w-full flex items-center px-4 sm:px-5 py-2.5 gap-2.5 md:border-r border-outline-variant/30 min-w-0">
+              <span className="material-symbols-outlined text-primary shrink-0 text-[22px]">location_on</span>
+              <div className="text-left w-full min-w-0">
+                <label className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-0.5">
+                  Location
+                </label>
+                <HeroSearchSelect
+                  value={location}
+                  onChange={setLocation}
+                  placeholder="Select Lahore area"
+                  options={locationOptions}
+                />
+              </div>
             </div>
-            <p className="text-gray-200/80 text-sm m-0 font-medium">Trusted by 500+ Event Planners</p>
+            <div className="flex-1 w-full flex items-center px-4 sm:px-5 py-2.5 gap-2.5 md:border-r border-outline-variant/30 min-w-0">
+              <span className="material-symbols-outlined text-secondary shrink-0 text-[22px]">celebration</span>
+              <div className="text-left w-full min-w-0">
+                <label className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-0.5">
+                  Event Type
+                </label>
+                <HeroSearchSelect
+                  value={eventType}
+                  onChange={setEventType}
+                  placeholder="Select event type"
+                  options={heroEventTypeOptions}
+                />
+              </div>
+            </div>
+            <div className="flex-1 w-full flex items-center px-4 sm:px-5 py-2.5 gap-2.5 md:border-r border-outline-variant/30 min-w-0">
+              <span className="material-symbols-outlined text-tertiary shrink-0 text-[22px]">groups</span>
+              <div className="text-left w-full min-w-0">
+                <label className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-0.5">
+                  Guest Count
+                </label>
+                <HeroSearchSelect
+                  value={guestCount}
+                  onChange={setGuestCount}
+                  placeholder="Any guest count"
+                  options={heroGuestCountOptions}
+                />
+              </div>
+            </div>
+            <button
+              type="submit"
+              className="w-full md:w-auto shrink-0 min-h-[48px] md:min-h-[52px] px-8 md:px-10 py-3 md:mx-2 rounded-full bg-primary-fixed text-primary font-bold text-sm md:text-base flex items-center justify-center gap-2 border border-primary/20 candy-shadow-primary bouncy-hover cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[20px] text-primary">search</span>
+              Search
+            </button>
+          </form>
+        </div>
+      </section>
+
+      {/* Explore Top Rated Venues — right after hero */}
+      <section className="py-16 md:py-24 bg-surface">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-12 md:mb-16">
+            <div className="text-center sm:text-left space-y-4">
+              <h2 className="text-3xl md:text-4xl font-black text-on-background">
+                Explore Top Rated Venues
+              </h2>
+              <p className="text-on-surface-variant max-w-xl font-medium">
+                Handpicked spaces that offer exceptional service and unforgettable atmospheres.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => router.push('/all-venues')}
+              className="text-sm font-bold text-primary hover:underline cursor-pointer bg-transparent border-0 self-center sm:self-auto"
+            >
+              View All →
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {featuredHalls.map((hall, index) => (
+              <HallCard
+                key={venueListKey(hall)}
+                venue={hall}
+                index={index}
+                imagePath={buildVenueImagePath(hall)}
+              />
+            ))}
           </div>
         </div>
       </section>
+
+      {/* Innovation at your Fingertips */}
+      <section className="py-24 bg-surface-container-low">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex justify-between items-end mb-12">
+            <div className="space-y-2">
+              <span className="text-primary font-black uppercase tracking-[0.2em] text-xs">
+                Festalytics Tech
+              </span>
+              <h2 className="text-3xl md:text-4xl font-black text-on-background">
+                Innovation at your Fingertips
+              </h2>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+            {innovationCards.map((card) => (
+              <button
+                key={card.title}
+                type="button"
+                onClick={() => router.push(card.href)}
+                className={`bg-white p-8 rounded-lg ${card.shadow} bouncy-hover border ${card.border} flex flex-col items-center text-center space-y-6 cursor-pointer`}
+              >
+                <img
+                  src={card.image}
+                  alt=""
+                  className="w-32 h-32 object-contain pointer-events-none"
+                />
+                <div className="space-y-2">
+                  <h3 className="text-xl font-bold text-on-background">{card.title}</h3>
+                  <p className="text-sm text-on-surface-variant">{card.description}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Venue Map banner */}
+      <section className="py-24">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="bg-inverse-surface rounded-xl overflow-hidden flex flex-col lg:flex-row items-center">
+            <div className="p-12 lg:p-20 lg:w-1/2 space-y-8 text-surface">
+              <span className="text-tertiary-fixed-dim font-black uppercase tracking-[0.2em] text-xs">
+                Venue Map Feature
+              </span>
+              <h2 className="text-3xl md:text-5xl lg:text-6xl font-black leading-tight">
+                Discover Venues Near You
+              </h2>
+              <p className="text-lg text-surface-variant/80 font-medium leading-relaxed">
+                Stop the endless scrolling. Our interactive Venue Map shows you the best venues
+                right where you are. Real-time availability and location-based discovery included.
+              </p>
+              <button
+                type="button"
+                onClick={() => router.push('/service-discovery')}
+                className="px-10 py-5 bg-tertiary text-on-tertiary rounded-full font-bold text-lg candy-shadow-tertiary bouncy-hover flex items-center gap-3 cursor-pointer border-0"
+              >
+                <span className="material-symbols-outlined">explore</span>
+                Explore Venue Map
+              </button>
+            </div>
+            <div className="lg:w-1/2 relative h-80 lg:h-auto min-h-[400px] lg:min-h-[500px] w-full">
+              <img
+                src={VENUE_MAP_BANNER_IMAGE}
+                alt=""
+                className="absolute inset-0 w-full h-full object-cover"
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* AI Planner banner */}
+      <section className="py-12 px-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="bg-on-background rounded-xl p-8 md:p-16 relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-10">
+            <div className="absolute top-0 right-0 w-1/2 h-full opacity-20 pointer-events-none">
+              <div className="w-full h-full bg-gradient-to-l from-primary via-secondary to-transparent" />
+            </div>
+            <div className="relative z-10 space-y-6 max-w-xl text-center md:text-left">
+              <h2 className="text-3xl md:text-5xl font-black text-white leading-tight">
+                Overwhelmed? Let AI Plan Your Event
+              </h2>
+              <p className="text-surface-variant/70 text-lg">
+                Just tell us your dreams, and we&apos;ll build the budget, find the vendors, and
+                manage the schedule.
+              </p>
+            </div>
+            <div className="relative z-10">
+              <button
+                type="button"
+                onClick={() => router.push('/ai-planner')}
+                className="px-10 py-5 bg-primary text-on-primary rounded-full font-bold text-xl shadow-2xl candy-shadow-primary bouncy-hover flex items-center gap-3 cursor-pointer border-0"
+              >
+                <span className="material-symbols-outlined">auto_awesome</span>
+                Try AI Planner
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <WhyChooseUs />
     </div>
   )
 }
 
 export default LandingPage
-
