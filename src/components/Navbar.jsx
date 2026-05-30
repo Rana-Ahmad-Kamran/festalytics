@@ -83,6 +83,18 @@ function Navbar() {
           >
             Log in
           </button>
+          <Link
+            href="/signup"
+            className="ml-2 px-4 py-2 text-[14px] font-semibold text-gray-700 border border-gray-200 rounded-full bg-white no-underline hover:border-[#D6336C]/40 hover:text-[#D6336C] transition-colors"
+          >
+            Sign up
+          </Link>
+          <Link
+            href="/login?type=vendor"
+            className="ml-2 px-4 py-2 text-[14px] font-semibold text-gray-600 hover:text-[#D6336C] no-underline transition-colors hidden lg:inline-flex items-center gap-1"
+          >
+            For Venues
+          </Link>
           <button
             type="button"
             onClick={() => router.push('/all-venues')}
@@ -121,26 +133,42 @@ function Navbar() {
               </Link>
             </li>
           ))}
-          <li className="mt-4 flex gap-2 px-4 pb-2">
-            <button
-              type="button"
-              onClick={() => {
-                closeMenu()
-                openAuthGate('login')
-              }}
-              className="flex-1 py-3 text-[#D6336C] font-semibold border border-[#D6336C]/30 rounded-full bg-white cursor-pointer"
+          <li className="mt-4 flex flex-col gap-2 px-4 pb-2">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  closeMenu()
+                  openAuthGate('login')
+                }}
+                className="flex-1 py-3 text-[#D6336C] font-semibold border border-[#D6336C]/30 rounded-full bg-white cursor-pointer"
+              >
+                Log in
+              </button>
+              <Link
+                href="/signup"
+                onClick={closeMenu}
+                className="flex-1 py-3 text-center text-gray-700 font-semibold border border-gray-200 rounded-full bg-white no-underline"
+              >
+                Sign up
+              </Link>
+            </div>
+            <Link
+              href="/login?type=vendor"
+              onClick={closeMenu}
+              className="block py-3 text-center text-sm font-semibold text-gray-600 hover:text-[#D6336C] no-underline"
             >
-              Log in
-            </button>
+              For Venues → Vendor Portal
+            </Link>
             <button
               type="button"
               onClick={() => {
                 closeMenu()
                 router.push('/all-venues')
               }}
-              className="flex-1 py-3 bg-gradient-to-r from-[#D6336C] to-[#ff6eb4] text-white rounded-full font-semibold border-0 cursor-pointer"
+              className="w-full py-3 bg-gradient-to-r from-[#D6336C] to-[#ff6eb4] text-white rounded-full font-semibold border-0 cursor-pointer"
             >
-              Explore
+              Explore Venues
             </button>
           </li>
         </ul>

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import {
   signInWithEmailAndPassword,
   setPersistence,
@@ -13,8 +14,9 @@ import { doc, getDoc } from 'firebase/firestore'
 import { auth, db } from '../firebase'
 import { FaStore, FaUser } from 'react-icons/fa'
 
-function Login({ onClose }) {
+function Login({ onClose, initialType = null }) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [loginType, setLoginType] = useState(null) // null, 'vendor', or 'user'
   const [formData, setFormData] = useState({
     email: '',
@@ -24,6 +26,18 @@ function Login({ onClose }) {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [loading, setLoading] = useState(false)
+
+  const handleClose = onClose || (() => router.push('/'))
+
+  useEffect(() => {
+    const typeParam = searchParams.get('type') || initialType
+    if (typeParam === 'vendor' || typeParam === 'user') {
+      setLoginType(typeParam)
+    }
+  }, [searchParams, initialType])
+
+  const signupHref =
+    loginType === 'vendor' ? '/signup?role=vendor' : '/signup'
 
   const handleInputChange = (e) => {
     setFormData({
@@ -190,10 +204,19 @@ function Login({ onClose }) {
     <div className="min-h-screen w-full bg-black/60 fixed inset-0 flex items-center justify-center p-8 z-[9999] backdrop-blur-md animate-[fadeIn_0.3s_ease] sm:p-4">
       <button
         className="absolute top-6 right-6 bg-white/10 border border-white/20 w-10 h-10 rounded-full text-2xl cursor-pointer flex items-center justify-center text-white transition-all duration-300 z-[1000] hover:bg-[#D6336C] hover:border-[#D6336C] hover:rotate-90 sm:top-4 sm:right-4"
-        onClick={onClose}
+        onClick={handleClose}
+        type="button"
+        aria-label="Close"
       >
         ×
       </button>
+
+      <Link
+        href="/"
+        className="absolute top-6 left-6 text-sm font-semibold text-white/80 hover:text-white transition-colors z-[1000] sm:top-4 sm:left-4"
+      >
+        ← Festalytics
+      </Link>
 
       <div className="bg-white/5 backdrop-blur-2xl border border-white/10 rounded-3xl w-full max-w-[500px] relative shadow-[0_20px_60px_rgba(0,0,0,0.5)] animate-[slideUp_0.3s_ease] z-10 text-white">
         <div className="text-center pt-12 px-8 pb-6 border-b border-white/10">
@@ -308,14 +331,40 @@ function Login({ onClose }) {
               </button>
 
               <p className="text-center text-gray-300 text-sm mt-2">
-                Don't have an account? <span
+                Don&apos;t have an account?{' '}
+                <span
                   className="text-[#D6336C] cursor-pointer hover:underline font-semibold"
                   onClick={() => {
-                    if (onClose) onClose();
-                    router.push('/signup');
+                    handleClose()
+                    router.push(signupHref)
                   }}
-                >Sign up</span>
+                >
+                  {loginType === 'vendor' ? 'Register your venue' : 'Sign up'}
+                </span>
               </p>
+              {loginType === 'vendor' ? (
+                <p className="text-center text-gray-400 text-xs mt-3">
+                  Planning an event?{' '}
+                  <button
+                    type="button"
+                    onClick={() => setLoginType('user')}
+                    className="text-[#D6336C] font-semibold hover:underline bg-transparent border-0 cursor-pointer p-0"
+                  >
+                    Log in as guest
+                  </button>
+                </p>
+              ) : loginType === 'user' ? (
+                <p className="text-center text-gray-400 text-xs mt-3">
+                  Own a venue?{' '}
+                  <button
+                    type="button"
+                    onClick={() => setLoginType('vendor')}
+                    className="text-[#D6336C] font-semibold hover:underline bg-transparent border-0 cursor-pointer p-0"
+                  >
+                    Vendor portal
+                  </button>
+                </p>
+              ) : null}
             </form>
           </div>
         )}

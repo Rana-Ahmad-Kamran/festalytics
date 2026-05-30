@@ -1,4 +1,5 @@
 import React from 'react';
+import Link from 'next/link';
 import {
     FaXTwitter,
     FaFacebookF,
@@ -57,11 +58,22 @@ const Footer = () => {
                         <div className="space-y-4">
                             <h3 className="text-sm font-semibold text-gray-900 tracking-wider uppercase">Company</h3>
                             <ul className="space-y-3">
-                                {['About Us', 'Contact Us'].map((item) => (
-                                    <li key={item}>
-                                        <a href="#" className="text-sm text-gray-600 hover:text-[#D6336C] transition-colors">
-                                            {item}
-                                        </a>
+                                {[
+                                    { label: 'About Us', href: '#' },
+                                    { label: 'Contact Us', href: '#' },
+                                    { label: 'Vendor Login', href: '/login?type=vendor' },
+                                    { label: 'Register Your Venue', href: '/signup?role=vendor' },
+                                ].map((item) => (
+                                    <li key={item.label}>
+                                        {item.href.startsWith('/') ? (
+                                            <Link href={item.href} className="text-sm text-gray-600 hover:text-[#D6336C] transition-colors">
+                                                {item.label}
+                                            </Link>
+                                        ) : (
+                                            <a href={item.href} className="text-sm text-gray-600 hover:text-[#D6336C] transition-colors">
+                                                {item.label}
+                                            </a>
+                                        )}
                                     </li>
                                 ))}
                             </ul>

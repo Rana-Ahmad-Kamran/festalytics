@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { FaUser, FaStore, FaGoogle, FaTimes, FaUpload, FaFileImage, FaEnvelopeOpenText } from 'react-icons/fa';
@@ -20,6 +20,13 @@ const SignupPage = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
     const returnUrl = searchParams.get('returnUrl');
+
+    useEffect(() => {
+        const roleParam = searchParams.get('role');
+        if (roleParam === 'vendor' || roleParam === 'user') {
+            setRole(roleParam);
+        }
+    }, [searchParams]);
 
     // Form States
     const [firstName, setFirstName] = useState('');

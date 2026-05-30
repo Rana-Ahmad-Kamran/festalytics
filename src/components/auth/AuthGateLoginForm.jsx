@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import {
   signInWithEmailAndPassword,
   setPersistence,
@@ -83,6 +84,13 @@ export default function AuthGateLoginForm({ onSuccess, onClose }) {
       {error && (
         <div className="p-3 rounded-lg text-sm bg-red-50 text-red-700 border border-red-100">
           {error}
+          {error.includes("Vendor") && (
+            <p className="mt-2">
+              <Link href="/login?type=vendor" className="font-semibold text-[#D6336C] hover:underline">
+                Go to Vendor Portal →
+              </Link>
+            </p>
+          )}
         </div>
       )}
 

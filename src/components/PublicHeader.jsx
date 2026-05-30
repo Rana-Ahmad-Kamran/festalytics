@@ -79,13 +79,18 @@ function PublicHeader() {
           >
             Log in
           </button>
-          <button
-            type="button"
-            onClick={() => router.push("/signup")}
-            className="ml-2 bg-gradient-to-r from-[#D6336C] to-[#ff6eb4] text-white px-5 py-2 rounded-full font-semibold text-[14px] shadow-[0_4px_15px_rgba(214,51,108,0.3)] cursor-pointer border-0 hover:scale-105 transition-transform"
+          <Link
+            href="/signup"
+            className="ml-2 px-4 py-2 text-[14px] font-semibold text-gray-700 border border-gray-200 rounded-full bg-white no-underline hover:border-[#D6336C]/40 hover:text-[#D6336C] transition-colors"
           >
             Sign up
-          </button>
+          </Link>
+          <Link
+            href="/login?type=vendor"
+            className="ml-2 px-4 py-2 text-[14px] font-semibold text-gray-600 hover:text-[#D6336C] no-underline transition-colors hidden lg:inline-flex items-center"
+          >
+            For Venues
+          </Link>
         </div>
 
         <button
@@ -117,27 +122,33 @@ function PublicHeader() {
               </Link>
             </li>
           ))}
-          <li className="mt-3 flex gap-2 px-4 pb-2">
-            <button
-              type="button"
-              onClick={() => {
-                closeMenu();
-                openAuthGate("login");
-              }}
-              className="flex-1 py-3 text-[#D6336C] font-semibold border border-[#D6336C]/30 rounded-full bg-white cursor-pointer"
+          <li className="mt-3 flex flex-col gap-2 px-4 pb-2">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  closeMenu();
+                  openAuthGate("login");
+                }}
+                className="flex-1 py-3 text-[#D6336C] font-semibold border border-[#D6336C]/30 rounded-full bg-white cursor-pointer"
+              >
+                Log in
+              </button>
+              <Link
+                href="/signup"
+                onClick={closeMenu}
+                className="flex-1 py-3 text-center text-gray-700 font-semibold border border-gray-200 rounded-full bg-white no-underline"
+              >
+                Sign up
+              </Link>
+            </div>
+            <Link
+              href="/login?type=vendor"
+              onClick={closeMenu}
+              className="block py-3 text-center text-sm font-semibold text-gray-600 hover:text-[#D6336C] no-underline"
             >
-              Log in
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                closeMenu();
-                router.push("/signup");
-              }}
-              className="flex-1 py-3 bg-gradient-to-r from-[#D6336C] to-[#ff6eb4] text-white rounded-full font-semibold border-0 cursor-pointer"
-            >
-              Sign up
-            </button>
+              For Venues → Vendor Portal
+            </Link>
           </li>
         </ul>
       </div>
