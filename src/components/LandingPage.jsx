@@ -48,19 +48,28 @@ function LandingPage({ onLoginClick }) {
                 className="py-3.5 px-8 border-none rounded-[50px] text-base font-semibold cursor-pointer transition-all duration-300 no-underline inline-block bg-white text-[#667eea] shadow-[0_4px_15px_rgba(0,0,0,0.2)] hover:bg-[#C2255C] hover:text-white hover:-translate-y-0.5 hover:shadow-[0_6px_20px_rgba(214,51,108,0.4)] active:bg-[#C2255C] active:text-white active:shadow-[0_6px_20px_rgba(214,51,108,0.4)] active:-translate-y-0.5 max-sm:w-1/2 max-sm:flex-none"
                 onClick={(e) => {
                   e.stopPropagation()
-                  onLoginClick()
+                  router.push('/all-venues')
                 }}
               >
-                Login
+                Explore Venues
               </button>
               <button
                 className="py-3.5 px-8 rounded-[50px] text-base font-semibold cursor-pointer transition-all duration-300 no-underline inline-block bg-transparent text-white border-2 border-white md:hover:bg-[#C2255C] md:hover:text-white md:hover:border-[#C2255C] md:hover:-translate-y-0.5 active:bg-[#C2255C] active:text-white active:border-[#C2255C] active:-translate-y-0.5 max-sm:w-1/2 max-sm:flex-none"
                 onClick={(e) => {
                   e.stopPropagation()
+                  onLoginClick()
+                }}
+              >
+                Log in
+              </button>
+              <button
+                className="py-3.5 px-8 rounded-[50px] text-base font-semibold cursor-pointer transition-all duration-300 no-underline inline-block bg-transparent text-white border-2 border-white/60 md:hover:bg-white/10 md:hover:-translate-y-0.5 active:bg-white/10 active:-translate-y-0.5 max-sm:w-full max-sm:flex-none"
+                onClick={(e) => {
+                  e.stopPropagation()
                   router.push('/signup')
                 }}
               >
-                Signup
+                Sign up
               </button>
             </div>
           </div>
@@ -129,8 +138,11 @@ function LandingPage({ onLoginClick }) {
         <div className="max-w-[800px] mx-auto bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl py-16 px-12 text-center relative z-[2] opacity-0 translate-y-[30px] animate-[fadeInUp_0.8s_ease_forwards] max-md:p-8 max-sm:p-6">
           <h2 className="text-[3.5rem] font-extrabold mb-4 text-white leading-[1.2] max-md:text-[2.5rem] max-sm:text-[2rem]">Ready to Get Started?</h2>
           <p className="text-xl mb-10 text-gray-200/90 leading-relaxed max-md:text-lg max-sm:text-base">Join thousands of satisfied customers today</p>
-          <button className="py-4.5 px-10 bg-[#D6336C] text-white border-none rounded-[50px] text-lg font-semibold cursor-pointer transition-all duration-300 inline-flex items-center gap-3 shadow-[0_4px_15px_rgba(214,51,108,0.4)] group md:hover:bg-[#C2255C] md:hover:-translate-y-0.5 md:hover:shadow-[0_6px_20px_rgba(214,51,108,0.6)] active:bg-[#C2255C] active:-translate-y-0.5 active:shadow-[0_6px_20px_rgba(214,51,108,0.6)] max-sm:py-4 max-sm:px-8 max-sm:text-base">
-            Start Your Journey
+          <button
+            className="py-4.5 px-10 bg-[#D6336C] text-white border-none rounded-[50px] text-lg font-semibold cursor-pointer transition-all duration-300 inline-flex items-center gap-3 shadow-[0_4px_15px_rgba(214,51,108,0.4)] group md:hover:bg-[#C2255C] md:hover:-translate-y-0.5 md:hover:shadow-[0_6px_20px_rgba(214,51,108,0.6)] active:bg-[#C2255C] active:-translate-y-0.5 active:shadow-[0_6px_20px_rgba(214,51,108,0.6)] max-sm:py-4 max-sm:px-8 max-sm:text-base"
+            onClick={() => router.push('/all-venues')}
+          >
+            Explore Venues
             <FaArrowRight className="transition-transform duration-300 md:group-hover:translate-x-1 group-active:translate-x-1" />
           </button>
           <div className="mt-8 flex flex-col items-center gap-2">

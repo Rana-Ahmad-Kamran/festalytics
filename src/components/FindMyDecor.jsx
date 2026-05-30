@@ -1,8 +1,11 @@
+"use client";
+
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, RefreshCw } from 'lucide-react';
-import DashboardHeader from './DashboardHeader';
+import PublicSiteHeader from './PublicSiteHeader';
 import Footer from './Footer';
+import { useAuth } from '@/context/AuthContext';
 
 // Internal Components
 import FileUpload from './find-my-decor/FileUpload';
@@ -11,14 +14,14 @@ import AnalysisResult from './find-my-decor/AnalysisResult';
 import { analyzeImage } from './find-my-decor/decorAIService';
 
 const FindMyDecor = () => {
+    const { requireAuth } = useAuth();
     const [image, setImage] = useState(null);
     const [isScanning, setIsScanning] = useState(false);
     const [analysisResult, setAnalysisResult] = useState(null);
 
-    const handleFileSelect = async (imageData) => {
+    const runAnalysis = async (imageData) => {
         setImage(imageData);
         setIsScanning(true);
-        // Reset previous results
         setAnalysisResult(null);
 
         try {
@@ -26,12 +29,19 @@ const FindMyDecor = () => {
             setAnalysisResult(results);
         } catch (error) {
             console.error("Analysis failed", error);
-            // Handle error state appropriately (alert for now)
             alert("Could not analyze image. Please try again.");
             setImage(null);
         } finally {
             setIsScanning(false);
         }
+    };
+
+    const handleFileSelect = (imageData) => {
+        requireAuth({
+            action: 'decor',
+            payload: { hasImage: true },
+            onAuthed: () => runAnalysis(imageData),
+        });
     };
 
     const handleReset = () => {
@@ -47,7 +57,7 @@ const FindMyDecor = () => {
 
     return (
         <div className="min-h-screen bg-[#FAFAFA] text-slate-800 font-sans flex flex-col">
-            <DashboardHeader />
+            <PublicSiteHeader />
 
             <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10">
 

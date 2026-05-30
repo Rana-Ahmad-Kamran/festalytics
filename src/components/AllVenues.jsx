@@ -4,7 +4,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Search, MapPin } from 'lucide-react';
 import { motion } from 'framer-motion';
-import DashboardHeader from './DashboardHeader';
+import PublicSiteHeader from './PublicSiteHeader';
 import Footer from './Footer';
 import HallCard from './HallCard';
 import hallsData from '../data/halls.json';
@@ -62,7 +62,7 @@ const AllVenues = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans text-slate-800">
-      <DashboardHeader />
+      <PublicSiteHeader />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         {/* Header & Back Button */}

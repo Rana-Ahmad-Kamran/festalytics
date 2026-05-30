@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Star, MapPin, Users, DollarSign, CheckCircle, Phone, Info, Calendar } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import DashboardHeader from './DashboardHeader';
+import PublicSiteHeader from './PublicSiteHeader';
 import Footer from './Footer';
 import hallsData from '../data/halls.json';
 import { db, auth } from "../firebase";
 import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
 import { submitCustomerQuotation } from "@/lib/firestore/quotations";
+import { useAuth } from "@/context/AuthContext";
 import {
   appendZaydanCallingRow,
   quotationToCallingRow,
@@ -22,6 +23,7 @@ import VenueFaqSection from "@/components/venue/VenueFaqSection";
 const VenueDetails = () => {
   const { id } = useParams();
   const router = useRouter();
+  const { requireAuth, loadPendingAction } = useAuth();
   const [venue, setVenue] = useState(null);
   const [activeImage, setActiveImage] = useState(0);
   const [rating, setRating] = useState('4.5');
@@ -239,11 +241,13 @@ const VenueDetails = () => {
       };
 
       try {
-        await setDoc(docRef, defaultData);
+        if (auth.currentUser) {
+          await setDoc(docRef, defaultData);
+        }
         applyVenueData(defaultData);
       } catch (err) {
         console.error("Error seeding Firestore venue:", err);
-        setLoadingDb(false);
+        applyVenueData(defaultData);
       }
     };
 
@@ -280,6 +284,28 @@ const VenueDetails = () => {
       setGuestsCount(maxCapacity);
     }
   }, [maxCapacity, guestsCount]);
+
+  useEffect(() => {
+    if (!venue) return;
+    const pending = loadPendingAction();
+    if (!pending || pending.action !== "quote") return;
+    const docId = getFirestoreDocId(venue);
+    if (pending.payload?.venueId !== docId) return;
+
+    const p = pending.payload;
+    if (p.clientName) setClientName(p.clientName);
+    if (p.clientContact) setClientContact(p.clientContact);
+    if (p.eventDate) setEventDate(p.eventDate);
+    if (p.eventTiming) setEventTiming(p.eventTiming);
+    if (p.eventCategory) setEventCategory(p.eventCategory);
+    if (p.guestsCount != null) setGuestsCount(p.guestsCount);
+    if (p.selectedPkgId) setSelectedPkgId(p.selectedPkgId);
+    if (p.includeAC != null) setIncludeAC(p.includeAC);
+    if (p.includeGenerator != null) setIncludeGenerator(p.includeGenerator);
+    if (p.includeDecor != null) setIncludeDecor(p.includeDecor);
+    if (p.includeSound != null) setIncludeSound(p.includeSound);
+    if (p.includeSecurity != null) setIncludeSecurity(p.includeSecurity);
+  }, [venue, loadPendingAction]);
 
   if (!venue) {
     return (
@@ -526,30 +552,11 @@ const VenueDetails = () => {
     setTimeout(() => setQuoteToast({ show: false, message: "", type: "success" }), 3500);
   };
 
-  const handleBookQuote = async (e) => {
-    e.preventDefault();
-    if (!clientName.trim() || !clientContact.trim() || !eventDate) {
-      triggerQuoteToast("Please fill in your Name, Contact, and Event Date!", "error");
-      return;
-    }
-
+  const executeSubmitQuote = async () => {
     const docId = getFirestoreDocId(venue);
-
-    // Check if the selected date is already blocked in Firestore
-    if (publicCal.isDateUnavailable(eventDate)) {
-      const status = getDateStatus(eventDate, publicCal.calendarMeta);
-      const msg =
-        status === "blackout"
-          ? "This date is blocked by the venue (maintenance/blackout)."
-          : status === "pending"
-          ? "This date has a pending booking request."
-          : "Selected date is already booked at this venue!";
-      triggerQuoteToast(msg, "error");
-      return;
-    }
-
     setIsSubmittingQuote(true);
     const bookingId = `BK-${Math.floor(1000 + Math.random() * 9000)}`;
+    const selectedPkg = activePackages.find((p) => p.id === selectedPkgId) || activePackages[0];
 
     const bookingPayload = {
       id: bookingId,
@@ -557,7 +564,7 @@ const VenueDetails = () => {
         name: clientName,
         contact: clientContact,
         otherName: "",
-        address: ""
+        address: "",
       },
       eventDetails: {
         category: eventCategory,
@@ -565,13 +572,13 @@ const VenueDetails = () => {
         timing: eventTiming,
         guests: parseInt(guestsCount, 10),
         venueId: docId,
-        source: 'Online Portal'
+        source: "Online Portal",
       },
       catering: {
         packageId: selectedPkgId || "",
-        packageName: selectedPkg?.name || 'Venue Hire Only',
+        packageName: selectedPkg?.name || "Venue Hire Only",
         perPlatePrice: selectedPkg ? selectedPkg.perPlatePrice : 0,
-        dishes: selectedPkg ? (selectedPkg.dishes || []) : []
+        dishes: selectedPkg ? selectedPkg.dishes || [] : [],
       },
       addons: {
         ac: includeAC,
@@ -579,7 +586,7 @@ const VenueDetails = () => {
         addonsCost: addonsCost,
         decor: includeDecor,
         sound: includeSound,
-        security: includeSecurity
+        security: includeSecurity,
       },
       financials: {
         hallRent: baseRent,
@@ -590,19 +597,16 @@ const VenueDetails = () => {
         taxCost: 0,
         grandTotal: totalEstimation,
         advancePaid: 0,
-        remainingBalance: totalEstimation
+        remainingBalance: totalEstimation,
       },
-      status: 'Pending', // online request starts as Pending
-      bookingSource: 'online',
-      bookedDate: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      status: "Pending",
+      bookingSource: "online",
+      bookedDate: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }),
     };
 
     try {
       const currentUser = auth.currentUser;
-      if (!currentUser) {
-        triggerQuoteToast("Please log in to submit a quotation request.", "error");
-        return;
-      }
+      if (!currentUser) return;
 
       const quotationResult = await submitCustomerQuotation({
         userId: currentUser.uid,
@@ -614,7 +618,7 @@ const VenueDetails = () => {
           packageId: selectedPkgId || "",
           packageName: selectedPkg?.name || "Venue Hire Only",
           perPlatePrice: selectedPkg ? selectedPkg.perPlatePrice : 0,
-          dishes: selectedPkg ? (selectedPkg.dishes || []) : [],
+          dishes: selectedPkg ? selectedPkg.dishes || [] : [],
         },
       });
 
@@ -640,17 +644,11 @@ const VenueDetails = () => {
         }
       }
 
-      // Save online quote request to Google Sheets (legacy sheet)
       try {
         await fetch("/api/sync-bookings", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            bookings: [bookingPayload],
-            isMigration: false
-          })
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ bookings: [bookingPayload], isMigration: false }),
         });
       } catch (sheetErr) {
         console.warn("Could not save online request to Google Sheets:", sheetErr);
@@ -658,8 +656,6 @@ const VenueDetails = () => {
 
       setQuoteSubmitted(true);
       triggerQuoteToast("Quote Request Submitted Successfully to Vendor ERP!");
-      
-      // Reset details
       setClientName("");
       setClientContact("");
       setEventDate("");
@@ -669,6 +665,48 @@ const VenueDetails = () => {
     } finally {
       setIsSubmittingQuote(false);
     }
+  };
+
+  const handleBookQuote = async (e) => {
+    e.preventDefault();
+    if (!clientName.trim() || !clientContact.trim() || !eventDate) {
+      triggerQuoteToast("Please fill in your Name, Contact, and Event Date!", "error");
+      return;
+    }
+
+    const docId = getFirestoreDocId(venue);
+
+    if (publicCal.isDateUnavailable(eventDate)) {
+      const status = getDateStatus(eventDate, publicCal.calendarMeta);
+      const msg =
+        status === "blackout"
+          ? "This date is blocked by the venue (maintenance/blackout)."
+          : status === "pending"
+          ? "This date has a pending booking request."
+          : "Selected date is already booked at this venue!";
+      triggerQuoteToast(msg, "error");
+      return;
+    }
+
+    requireAuth({
+      action: "quote",
+      payload: {
+        venueId: docId,
+        clientName,
+        clientContact,
+        eventDate,
+        eventTiming,
+        eventCategory,
+        guestsCount,
+        selectedPkgId,
+        includeAC,
+        includeGenerator,
+        includeDecor,
+        includeSound,
+        includeSecurity,
+      },
+      onAuthed: executeSubmitQuote,
+    });
   };
 
   // Get folder path segment of current venue (e.g. "Zaydan Banquet Hall" or "Qasar E Zaydan")
@@ -695,7 +733,7 @@ const VenueDetails = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans text-slate-800">
-      <DashboardHeader />
+      <PublicSiteHeader />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Back Button */}
@@ -704,7 +742,7 @@ const VenueDetails = () => {
           className="flex items-center gap-2 text-gray-500 hover:text-gray-900 mb-6 font-medium transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
-          Back to Dashboard
+          Back to Venues
         </button>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

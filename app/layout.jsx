@@ -1,5 +1,6 @@
 import "@/index.css";
 import { Inter, DM_Sans } from "next/font/google";
+import { Providers } from "./providers";
 
 const inter = Inter({ subsets: ["latin"] });
 const dmSans = DM_Sans({
@@ -19,7 +20,9 @@ export default function RootLayout({ children }) {
       <head>
         <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" />
       </head>
-      <body className={`${inter.className} ${dmSans.variable}`} suppressHydrationWarning>{children}</body>
+      <body className={`${inter.className} ${dmSans.variable}`} suppressHydrationWarning>
+        <Providers>{children}</Providers>
+      </body>
     </html>
   );
 }

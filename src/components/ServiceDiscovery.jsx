@@ -7,7 +7,7 @@ import { Search, MapPin, Navigation, Phone, Star, Filter, Home, Camera, Utensils
 import { motion } from 'framer-motion';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
-import DashboardHeader from './DashboardHeader';
+import PublicSiteHeader from './PublicSiteHeader';
 
 // Fix for default Leaflet marker icons
 import icon from 'leaflet/dist/images/marker-icon.png';
@@ -172,7 +172,7 @@ const ServiceDiscovery = () => {
     return (
         <div className="flex flex-col h-screen bg-white font-sans text-gray-800">
             {/* Header */}
-            <DashboardHeader />
+            <PublicSiteHeader />
 
             <div className="flex flex-1 overflow-hidden relative">
 

@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { collection, onSnapshot } from "firebase/firestore";
-import { db } from "@/firebase";
+import { onAuthStateChanged } from "firebase/auth";
+import { db, auth } from "@/firebase";
 import {
   subscribeVenueCalendar,
   getDateStatus,
@@ -11,7 +12,7 @@ import {
 
 /**
  * Read-only venue calendar for customer-facing pages (e.g. /venue/1).
- * Same Firestore source as vendor dashboard calendar.
+ * Venue doc fields are public; bookings/quotations listeners only when signed in.
  */
 export function usePublicVenueCalendar(venueSlug) {
   const [viewYear, setViewYear] = useState(() => new Date().getFullYear());
@@ -49,27 +50,65 @@ export function usePublicVenueCalendar(venueSlug) {
       setIsLoading(false);
     });
 
-    const unsubBookings = onSnapshot(collection(db, "bookings"), (snap) => {
-      const list = snap.docs
-        .map((d) => ({ docId: d.id, ...d.data() }))
-        .filter(
-          (b) =>
-            b.targetVenueId === venueSlug || b.eventDetails?.venueId === venueSlug
-        );
-      setFirestoreBookings(list);
-    });
+    let unsubBookings = null;
+    let unsubQuotations = null;
 
-    const unsubQuotations = onSnapshot(collection(db, "quotations"), (snap) => {
-      const list = snap.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
-        .filter((q) => q.targetVenueId === venueSlug);
-      setQuotations(list);
+    const clearPrivateData = () => {
+      setFirestoreBookings([]);
+      setQuotations([]);
+    };
+
+    const attachPrivateListeners = () => {
+      unsubBookings = onSnapshot(
+        collection(db, "bookings"),
+        (snap) => {
+          const list = snap.docs
+            .map((d) => ({ docId: d.id, ...d.data() }))
+            .filter(
+              (b) =>
+                b.targetVenueId === venueSlug || b.eventDetails?.venueId === venueSlug
+            );
+          setFirestoreBookings(list);
+        },
+        (err) => console.warn("[usePublicVenueCalendar] bookings:", err.message)
+      );
+
+      unsubQuotations = onSnapshot(
+        collection(db, "quotations"),
+        (snap) => {
+          const list = snap.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .filter((q) => q.targetVenueId === venueSlug);
+          setQuotations(list);
+        },
+        (err) => console.warn("[usePublicVenueCalendar] quotations:", err.message)
+      );
+    };
+
+    const detachPrivateListeners = () => {
+      if (unsubBookings) {
+        unsubBookings();
+        unsubBookings = null;
+      }
+      if (unsubQuotations) {
+        unsubQuotations();
+        unsubQuotations = null;
+      }
+    };
+
+    const authUnsub = onAuthStateChanged(auth, (user) => {
+      detachPrivateListeners();
+      if (user) {
+        attachPrivateListeners();
+      } else {
+        clearPrivateData();
+      }
     });
 
     return () => {
       unsubVenue();
-      unsubBookings();
-      unsubQuotations();
+      authUnsub();
+      detachPrivateListeners();
     };
   }, [venueSlug, viewYear, viewMonth]);
 

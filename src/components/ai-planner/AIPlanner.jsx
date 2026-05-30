@@ -1,12 +1,16 @@
+"use client";
+
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Send, Image as ImageIcon, Sparkles, DollarSign, Calendar, MapPin } from 'lucide-react';
-import DashboardHeader from '../DashboardHeader';
+import PublicSiteHeader from '../PublicSiteHeader';
 import Footer from '../Footer';
+import { useAuth } from '@/context/AuthContext';
 import ChatBubble from './ChatBubble';
 import QuickActionButton from './QuickActionButton';
 
 const AIPlanner = () => {
+    const { requireAuth, user, loadPendingAction } = useAuth();
     const [messages, setMessages] = useState([
         {
             id: 1,
@@ -26,16 +30,20 @@ const AIPlanner = () => {
         scrollToBottom();
     }, [messages, isTyping]);
 
-    const handleSendMessage = async (text = inputValue) => {
+    useEffect(() => {
+        const pending = loadPendingAction?.();
+        if (!pending || pending.action !== 'ai' || !pending.payload?.text) return;
+        setInputValue(pending.payload.text);
+    }, [loadPendingAction]);
+
+    const sendAiMessage = async (text) => {
         if (!text.trim()) return;
 
-        // 1. Add User Message
         const userMsg = { id: Date.now(), sender: 'user', text };
         setMessages(prev => [...prev, userMsg]);
         setInputValue("");
         setIsTyping(true);
 
-        // 2. Simulate AI Delay & Response Logic
         setTimeout(() => {
             let aiResponse = {
                 id: Date.now() + 1,
@@ -60,7 +68,6 @@ const AIPlanner = () => {
                 };
             } else if (lowerText.includes('budget')) {
                 aiResponse.text = "Here is a suggested budget breakdown for a wedding with 300 guests:";
-                // In a real app, we'd render a BudgetCard here. For now text.
                 aiResponse.text += "\n\n• Venue & Food: 45%\n• Decor: 15%\n• Photography: 10%\n• Attire: 15%\n• Misc: 15%";
             } else if (lowerText.includes('timeline')) {
                 aiResponse.text = "Ideally, you should book your venue 6-8 months in advance. Assuming your wedding is in 6 months, here's a high-level timeline:\n\nMonth 1: Book Venue & Photographer\nMonth 3: Finalize Decor & Menu\nMonth 5: Send Invites";
@@ -73,6 +80,22 @@ const AIPlanner = () => {
         }, 1500);
     };
 
+    const handleSendMessage = (text = inputValue) => {
+        const messageText = text.trim();
+        if (!messageText) return;
+
+        if (!user) {
+            requireAuth({
+                action: 'ai',
+                payload: { text: messageText },
+                onAuthed: () => sendAiMessage(messageText),
+            });
+            return;
+        }
+
+        sendAiMessage(messageText);
+    };
+
     const handleKeyPress = (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
@@ -82,7 +105,7 @@ const AIPlanner = () => {
 
     return (
         <div className="min-h-screen bg-[#FAFAFA] text-slate-800 font-sans flex flex-col">
-            <DashboardHeader />
+            <PublicSiteHeader />
 
             <main className="flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 flex flex-col h-[calc(100vh-80px)]">
 

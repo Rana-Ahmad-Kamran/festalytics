@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { FaUser, FaStore, FaGoogle, FaTimes, FaUpload, FaFileImage, FaEnvelopeOpenText } from 'react-icons/fa';
 import {
     createUserWithEmailAndPassword,
@@ -18,6 +18,8 @@ const SignupPage = () => {
     const [role, setRole] = useState('user');
     const [selectedFile, setSelectedFile] = useState(null);
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const returnUrl = searchParams.get('returnUrl');
 
     // Form States
     const [firstName, setFirstName] = useState('');
@@ -131,7 +133,7 @@ const SignupPage = () => {
                     emailVerified: user.emailVerified === true,
                     createdAt: serverTimestamp()
                 });
-                router.push('/user-dashboard');
+                router.push(returnUrl && returnUrl.startsWith('/') ? returnUrl : '/user-dashboard');
             }
         } catch (error) {
             console.error("Signup Error:", error);
@@ -155,7 +157,7 @@ const SignupPage = () => {
                 // Existing user - Check Role
                 const userData = userDocSnap.data();
                 if (userData.role === 'user') {
-                    router.push('/user-dashboard');
+                    router.push(returnUrl && returnUrl.startsWith('/') ? returnUrl : '/user-dashboard');
                 } else {
                     alert(`This account is registered as a ${userData.role}. Please login with the correct account type.`);
                 }
@@ -170,7 +172,7 @@ const SignupPage = () => {
                     role: 'user',
                     createdAt: serverTimestamp()
                 });
-                router.push('/user-dashboard');
+                router.push(returnUrl && returnUrl.startsWith('/') ? returnUrl : '/user-dashboard');
             }
         } catch (error) {
             console.error("Google Signup Error:", error);
