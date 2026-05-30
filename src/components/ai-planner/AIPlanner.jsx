@@ -1,15 +1,11 @@
--"use client";
+"use client";
 import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Send, Sparkles, DollarSign, Calendar, MapPin, Loader2, AlertCircle } from 'lucide-react';
-import DashboardHeader from '../DashboardHeader';
+import PublicSiteHeader from '../PublicSiteHeader';
 import Footer from '../Footer';
-
-const AI_BACKEND_URL = (
-    (typeof window !== 'undefined' && window.__AI_BACKEND_URL__) ||
-    (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_AI_BACKEND_URL) ||
-    'http://localhost:8001'
-).replace(/\/$/, '');
+import { useAuth } from '@/context/AuthContext';
+import { ragChatUrl, resolveHallImageUrl } from '@/lib/aiBackendUrl';
 
 function sanitizeChatText(value) {
     return String(value || '')
@@ -137,7 +133,7 @@ const HallImageCards = ({ halls }) => {
                         {hall.images.slice(0, 3).map((image, index) => (
                             <img
                                 key={`${hall.name}-${index}`}
-                                src={`${AI_BACKEND_URL}${image.url}`}
+                                src={resolveHallImageUrl(image.url)}
                                 alt={`${hall.name} interior ${index + 1}`}
                                 className="aspect-[4/3] w-full rounded-2xl object-cover bg-slate-100 border border-white shadow-sm"
                                 loading="lazy"
@@ -187,6 +183,7 @@ const QuickActionButton = ({ icon: Icon, label, onClick }) => (
 );
 
 const AIPlanner = () => {
+    const { requireAuth } = useAuth();
     const [messages, setMessages] = useState(starterMessages);
     const [inputValue, setInputValue] = useState('');
     const [isTyping, setIsTyping] = useState(false);
@@ -203,7 +200,7 @@ const AIPlanner = () => {
     }, [messages, isTyping]);
 
     const askRagBackend = async (text) => {
-        const response = await fetch(`${AI_BACKEND_URL}/api/rag/chat`, {
+        const response = await fetch(ragChatUrl(), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ message: text })
@@ -216,7 +213,7 @@ const AIPlanner = () => {
         return data;
     };
 
-    const handleSendMessage = async (text = inputValue) => {
+    const sendAiMessage = async (text) => {
         const trimmed = text.trim();
         if (!trimmed || isTyping) return;
 
@@ -249,7 +246,7 @@ const AIPlanner = () => {
                 {
                     id: Date.now() + 1,
                     sender: 'ai',
-                    text: `Backend connection problem: ${message}\n\nMake sure the FastAPI backend is running on ${AI_BACKEND_URL}.`
+                    text: `Backend connection problem: ${message}\n\nThe app tried the local Next.js proxy first. For full Groq RAG answers, start the Python backend on port 8001.`
                 }
             ]);
         } finally {
@@ -259,18 +256,13 @@ const AIPlanner = () => {
 
     const handleSendMessage = (text = inputValue) => {
         const messageText = text.trim();
-        if (!messageText) return;
+        if (!messageText || isTyping) return;
 
-        if (!user) {
-            requireAuth({
-                action: 'ai',
-                payload: { text: messageText },
-                onAuthed: () => sendAiMessage(messageText),
-            });
-            return;
-        }
-
-        sendAiMessage(messageText);
+        requireAuth({
+            action: 'ai',
+            payload: { text: messageText },
+            onAuthed: () => sendAiMessage(messageText),
+        });
     };
 
     const handleKeyPress = (e) => {

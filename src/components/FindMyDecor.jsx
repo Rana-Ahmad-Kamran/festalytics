@@ -2,17 +2,13 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, RefreshCw, UploadCloud, Loader2, Image as ImageIcon, AlertCircle, CheckCircle2 } from 'lucide-react';
-import DashboardHeader from './DashboardHeader';
+import PublicSiteHeader from './PublicSiteHeader';
 import Footer from './Footer';
 import { useAuth } from '@/context/AuthContext';
-
-const AI_BACKEND_URL = (
-    (typeof window !== 'undefined' && window.__AI_BACKEND_URL__) ||
-    (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_AI_BACKEND_URL) ||
-    'http://localhost:8001'
-).replace(/\/$/, '');
+import { clipMatchUrl } from '@/lib/aiBackendUrl';
 
 const FindMyDecor = () => {
+    const { requireAuth } = useAuth();
     const fileInputRef = useRef(null);
     const [selectedFile, setSelectedFile] = useState(null);
     const [previewUrl, setPreviewUrl] = useState('');
@@ -26,7 +22,7 @@ const FindMyDecor = () => {
         const formData = new FormData();
         formData.append('image', file);
 
-        const response = await fetch(`${AI_BACKEND_URL}/api/clip/match`, {
+        const response = await fetch(clipMatchUrl(), {
             method: 'POST',
             body: formData
         });
@@ -39,7 +35,7 @@ const FindMyDecor = () => {
         return data;
     };
 
-    const handleFileSelect = async (file) => {
+    const runAnalysis = async (file) => {
         if (!file) return;
         setSelectedFile(file);
         setPreviewUrl(URL.createObjectURL(file));
@@ -54,17 +50,18 @@ const FindMyDecor = () => {
             }
             setAnalysisResult(result);
         } catch (err) {
-            setError(`${err.message || 'Could not analyze image.'} Make sure the FastAPI backend is running on ${AI_BACKEND_URL}.`);
+            setError(`${err.message || 'Could not analyze image.'} Start the Python backend on port 8001 for CLIP decor matching.`);
         } finally {
             setIsScanning(false);
         }
     };
 
-    const handleFileSelect = (imageData) => {
+    const handleFileSelect = (file) => {
+        if (!file) return;
         requireAuth({
             action: 'decor',
             payload: { hasImage: true },
-            onAuthed: () => runAnalysis(imageData),
+            onAuthed: () => runAnalysis(file),
         });
     };
 
