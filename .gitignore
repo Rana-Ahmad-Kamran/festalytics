@@ -7,24 +7,60 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
+# Dependencies
+node_modules/
+backend/.venv/
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Build outputs
+dist/
+dist-ssr/
+.next/
+out/
+build/
+
+# Environment files and secrets
+.env
+.env.*
 *.local
+!.env.example
+!backend/.env.example
+
+backend/.env
+backend/.env.*
+frontend/.env
+frontend/.env.*
+
+# Google credentials / private keys
+google-key.json
+service-account*.json
+*-service-account.json
+*.pem
+*.key
+*.p12
 
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
-.idea
+.idea/
 .DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
-node_modules/
-.next/
-out/
-build/
-# Google Credentials Key
-google-key.json
+# Local secrets
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+.env.local
+*.pem
+*.key
+service-account*.json
+

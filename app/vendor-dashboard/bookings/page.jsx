@@ -33,6 +33,199 @@ import {
     ZAYDAN_VENUE_SLUG,
 } from "@/lib/google/zaydanCallingSheet";
 
+const AI_BACKEND_URL = (
+    (typeof window !== "undefined" && window.__AI_BACKEND_URL__) ||
+    (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_AI_BACKEND_URL) ||
+    "http://localhost:8001"
+).replace(/\/$/, "");
+
+const SHEET_STATUS_OPTIONS = ["Pending", "Confirmed", "Cancelled"];
+
+function statusKey(value) {
+    return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function isPendingStatus(status) {
+    return statusKey(status) === "pending";
+}
+
+function isFinalStatus(status) {
+    const key = statusKey(status);
+    return key === "confirmed" || key === "cancelled" || key === "canceled" || key === "declined" || key === "accepted";
+}
+
+function isSheetBackedBooking(booking) {
+    return Boolean(booking?.sheetName && booking?.sheetRowNumber);
+}
+
+function selectedBookingId(booking) {
+    return String(booking?.id || booking?.docId || "").trim();
+}
+
+function twilioBelongsToBooking(twilioCall, booking) {
+    if (!twilioCall || !booking) return false;
+    const callBookingId = String(twilioCall.booking_id || twilioCall.bookingId || "").trim();
+    return callBookingId && callBookingId === selectedBookingId(booking);
+}
+
+
+async function parseJsonResponse(response, label = "API") {
+    const text = await response.text();
+    let data = {};
+    try {
+        data = text ? JSON.parse(text) : {};
+    } catch (error) {
+        const shortText = text ? text.slice(0, 180).replace(/\s+/g, " ") : "empty response";
+        throw new Error(`${label} returned a non-JSON response. Check that the API route exists and restart npm run dev. Response: ${shortText}`);
+    }
+    if (!response.ok) {
+        throw new Error(data?.error || data?.detail || `${label} failed with status ${response.status}`);
+    }
+    return data;
+}
+
+function normalizeColumnKey(value) {
+    return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function getColumnByAliases(columns, aliases, fallback = "") {
+    if (!columns || typeof columns !== "object") return fallback;
+    const wanted = aliases.map(normalizeColumnKey);
+    for (const [key, value] of Object.entries(columns)) {
+        if (wanted.includes(normalizeColumnKey(key)) && value !== undefined && value !== null && String(value).trim() !== "") {
+            return value;
+        }
+    }
+    return fallback;
+}
+
+function numberFromAny(value, fallback = 0) {
+    const text = String(value ?? "").replace(/,/g, "");
+    const match = text.match(/\d+(?:\.\d+)?/);
+    return match ? Number(match[0]) : fallback;
+}
+
+function mapSheetBookingToRow(b, venueId) {
+    const columns = b.sheetColumns || b.columns || b.raw?.columns || flattenSheetColumns(b);
+    // Show every live Google Sheet row. Do not hide rows just because the Sheet uses a venue name instead of the app venue slug.
+
+    const id = b.id || b.docId || getColumnByAliases(columns, ["Booking ID", "BookingID", "ID", "Booking No", "Booking Number"], `SHEET-${b.sheetName || "Row"}-${b.rowNumber || Date.now()}`);
+    const name = b.customer?.name || getColumnByAliases(columns, ["Customer", "Customer Name", "Client", "Client Name", "Name", "Full Name"], "Client");
+    const contact = b.customer?.contact || b.customer?.email || getColumnByAliases(columns, ["Contact", "Phone", "Phone Number", "Mobile", "Customer Contact", "Number", "Email"], "No Contact");
+    const category = b.eventDetails?.category || getColumnByAliases(columns, ["Service", "Event", "Event Type", "Category", "Event Category"], "Wedding Event");
+    const eventDate = b.eventDetails?.date || getColumnByAliases(columns, ["Event Date", "Date", "Function Date", "Booking Date"], "");
+    const timing = b.eventDetails?.timing || getColumnByAliases(columns, ["Timing", "Slot", "Event Timing", "Time"], "");
+    const status = normalizeSheetStatus(b.status || getColumnByAliases(columns, ["Status", "Call Status", "Confirmation Status"], "Pending"));
+    const amountValue = b.financials?.grandTotal || b.amount || getColumnByAliases(columns, ["Amount", "Grand Total", "Total", "Total Amount", "Price", "Package Amount"], 0);
+    const proof = getProofUrlFromBooking(b) || getColumnByAliases(columns, ["Proof", "Voice Proof", "Recording", "Recording Proof", "Call Recording", "Recording URL"], "");
+
+    return {
+        docId: b.docId || id,
+        id,
+        customer: {
+            name,
+            email: contact,
+            contact,
+            avatar: b.customer?.avatar || null,
+        },
+        service: category,
+        bookedDate: b.bookedDate || getColumnByAliases(columns, ["Booked Date", "Created At", "Created", "Date Added"], "Sheet Row"),
+        eventDate,
+        timing,
+        status,
+        source: b.bookingSource || b.source || getColumnByAliases(columns, ["Source", "Booking Source"], b.sheetName ? `Google Sheet: ${b.sheetName}` : "Google Sheet"),
+        amount: numberFromAny(amountValue, 0),
+        proof,
+        voiceProofUrl: proof,
+        sheetName: b.sheetName || "Google Sheet",
+        sheetRowNumber: b.rowNumber || "",
+        sheetColumns: columns,
+        raw: b.raw || b,
+    };
+}
+
+function getBookingContactValue(booking) {
+    return (
+        booking?.raw?.customer?.contact ||
+        booking?.raw?.customer?.phone ||
+        booking?.customer?.contact ||
+        booking?.customer?.phone ||
+        booking?.customer?.email ||
+        ""
+    );
+}
+
+function looksLikePhoneNumber(value) {
+    const normalized = String(value || "").replace(/[\s().-]/g, "");
+    return /^\+?\d{10,15}$/.test(normalized);
+}
+
+
+function getNestedValue(source, path) {
+    return path.split('.').reduce((obj, key) => (obj && obj[key] !== undefined ? obj[key] : undefined), source);
+}
+
+function findFirstValue(source, paths) {
+    for (const path of paths) {
+        const value = getNestedValue(source, path);
+        if (value !== undefined && value !== null && String(value).trim() !== "") return value;
+    }
+    return "";
+}
+
+function getProofUrlFromBooking(booking) {
+    return findFirstValue(booking || {}, [
+        "proof",
+        "voiceProofUrl",
+        "voiceCallRecordingUrl",
+        "callRecordingUrl",
+        "call_recording_url",
+        "public_recording_url",
+        "raw.proof",
+        "raw.voiceProofUrl",
+        "raw.voiceCallRecordingUrl",
+        "raw.callRecordingUrl",
+        "raw.call_recording_url",
+        "raw.public_recording_url",
+        "raw.twilio.proof",
+        "raw.twilio.recordingUrl",
+    ]);
+}
+
+function getTwilioProofUrl(twilioCall) {
+    if (!twilioCall) return "";
+    if (twilioCall.proof_url) return twilioCall.proof_url;
+    if (twilioCall.public_recording_url) return twilioCall.public_recording_url;
+    if (twilioCall.call_recording_url) {
+        return twilioCall.call_recording_url.startsWith("http")
+            ? twilioCall.call_recording_url
+            : `${AI_BACKEND_URL}${twilioCall.call_recording_url}`;
+    }
+    return "";
+}
+
+function flattenSheetColumns(source, prefix = "", output = {}) {
+    if (!source || typeof source !== "object") return output;
+    Object.entries(source).forEach(([key, value]) => {
+        const label = prefix ? `${prefix}.${key}` : key;
+        if (value && typeof value === "object" && !Array.isArray(value)) {
+            flattenSheetColumns(value, label, output);
+        } else if (Array.isArray(value)) {
+            output[label] = value.join(", ");
+        } else {
+            output[label] = value ?? "";
+        }
+    });
+    return output;
+}
+
+function normalizeSheetStatus(status) {
+    const value = String(status || "").trim().toLowerCase();
+    if (["accepted", "confirmed", "approve", "approved"].includes(value)) return "Confirmed";
+    if (["cancelled", "canceled", "declined", "rejected", "cancel"].includes(value)) return "Cancelled";
+    return "Pending";
+}
+
 function mergeBookingRows(...lists) {
     const byKey = new Map();
     for (const list of lists) {
@@ -98,6 +291,12 @@ const BookingsPage = () => {
 
     // Receipt details for post-booking success display
     const [createdReceipt, setCreatedReceipt] = useState(null);
+    const [twilioCall, setTwilioCall] = useState(null);
+    const [isTwilioCalling, setIsTwilioCalling] = useState(false);
+    const [isTwilioRefreshing, setIsTwilioRefreshing] = useState(false);
+    const [twilioError, setTwilioError] = useState("");
+    const [twilioDecisionApplied, setTwilioDecisionApplied] = useState(false);
+    const [lastSyncedProofKey, setLastSyncedProofKey] = useState("");
 
     // Show dynamic toast helper
     const triggerToast = (message, type = "success") => {
@@ -105,9 +304,44 @@ const BookingsPage = () => {
         setTimeout(() => setToast({ show: false, message: "", type: "success" }), 3500);
     };
 
-    const loadData = async () => {
+    const syncSheetStatusOnly = async (booking, newStatus) => {
+        const normalizedStatus = normalizeSheetStatus(newStatus);
+        try {
+            const response = await fetch("/api/sync-bookings-proof", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    bookingId: selectedBookingId(booking),
+                    sheetName: booking?.sheetName || booking?.raw?.sheetName || "",
+                    rowNumber: booking?.sheetRowNumber || booking?.raw?.rowNumber || "",
+                    status: normalizedStatus,
+                    proofUrl: getProofUrlFromBooking(booking) || "",
+                })
+            });
+            const data = await parseJsonResponse(response, "/api/sync-bookings-proof");
+            if (!data.success || data.updated < 1) {
+                throw new Error(data.error || "No matching Google Sheet row was updated.");
+            }
+            setSheetBookings((prev) => prev.map((row) => {
+                const sameRow = (row.sheetName === booking.sheetName && row.sheetRowNumber === booking.sheetRowNumber) || selectedBookingId(row) === selectedBookingId(booking);
+                return sameRow ? { ...row, status: normalizedStatus, sheetColumns: { ...(row.sheetColumns || {}), Status: normalizedStatus } } : row;
+            }));
+            setSelectedDetailBooking((prev) => {
+                if (!prev) return prev;
+                const sameRow = (prev.sheetName === booking.sheetName && prev.sheetRowNumber === booking.sheetRowNumber) || selectedBookingId(prev) === selectedBookingId(booking);
+                return sameRow ? { ...prev, status: normalizedStatus, sheetColumns: { ...(prev.sheetColumns || {}), Status: normalizedStatus } } : prev;
+            });
+            triggerToast(`Status updated to ${normalizedStatus}.`, "success");
+            loadData(true);
+        } catch (err) {
+            console.error("Status update failed:", err);
+            triggerToast(`Status update failed: ${err.message}`, "error");
+        }
+    };
+
+    const loadData = async (silent = false) => {
         if (!venueId) return;
-        setIsLoading(true);
+        if (!silent) setIsLoading(true);
         try {
             // 1. Fetch Venue details to retrieve dynamic pricing and catering menu cards
             const docRef = doc(db, "venues", venueId);
@@ -120,43 +354,32 @@ const BookingsPage = () => {
                 }
             }
 
-            // 2. Optional: merge Google Sheets bookings (Firestore is the source of truth for walk-ins)
+            // 2. Live Google Sheet reflection. This reads every row and every column from the Sheet.
             let list = [];
             try {
-                const response = await fetch("/api/sync-bookings");
-                const resData = await response.json();
-                if (resData.success && resData.bookings) {
-                    resData.bookings.forEach((b) => {
-                        const bookingVenueId = b.targetVenueId || b.eventDetails?.venueId;
-                        if (bookingVenueId === venueId) {
-                            list.push({
-                                docId: b.id,
-                                id: b.id,
-                                customer: { 
-                                    name: b.customer?.name || "Client", 
-                                    email: b.customer?.contact || "No Email",
-                                    avatar: null 
-                                },
-                                service: b.eventDetails?.category || "Wedding Event",
-                                bookedDate: b.bookedDate || "Today",
-                                eventDate: b.eventDetails?.date || "",
-                                timing: b.eventDetails?.timing || "",
-                                status: b.status || "Pending",
-                                source: b.bookingSource === "walk-in" ? "Walk-in ERP" : (b.bookingSource || b.eventDetails?.source || "online"),
-                                amount: b.financials?.grandTotal || 0,
-                                raw: b
-                            });
-                        }
-                    });
+                let resData = { success: false, bookings: [] };
+                try {
+                    const liveResponse = await fetch("/api/live-google-sheet", { cache: "no-store" });
+                    resData = await parseJsonResponse(liveResponse, "/api/live-google-sheet");
+                } catch (liveErr) {
+                    console.warn("Live sheet route failed, falling back to /api/sync-bookings:", liveErr);
+                    const fallbackResponse = await fetch("/api/sync-bookings", { cache: "no-store" });
+                    resData = await parseJsonResponse(fallbackResponse, "/api/sync-bookings");
                 }
+
+                const sheetRows = resData.bookings || resData.rows || [];
+                sheetRows.forEach((b) => {
+                    const mapped = mapSheetBookingToRow(b, venueId);
+                    if (mapped) list.push(mapped);
+                });
             } catch (apiErr) {
-                console.warn("Could not load bookings from Google Sheets:", apiErr);
+                console.warn("Could not load live Google Sheet bookings:", apiErr);
             }
             setSheetBookings(list.reverse());
         } catch (err) {
             console.error("Error pulling database profiles: ", err);
         } finally {
-            setIsLoading(false);
+            if (!silent) setIsLoading(false);
         }
     };
 
@@ -220,7 +443,11 @@ const BookingsPage = () => {
                     catering: b.catering,
                     financials: b.financials,
                     bookingSource: b.bookingSource || b.eventDetails?.source || "online",
-                    status: b.status || "Pending"
+                    status: b.status || "Pending",
+                    proof: b.proof || b.voiceProofUrl || b.voiceCallRecordingUrl || b.callRecordingUrl || "",
+                    voiceProofUrl: b.voiceProofUrl || b.proof || b.voiceCallRecordingUrl || b.callRecordingUrl || "",
+                    voiceCallSid: b.voiceCallSid || "",
+                    voiceCallStatus: b.voiceCallStatus || ""
                 });
             });
 
@@ -235,7 +462,7 @@ const BookingsPage = () => {
                 })
             });
 
-            const resData = await res.json();
+            const resData = await parseJsonResponse(res, "/api/sync-bookings");
             if (resData.success) {
                 triggerToast("Migration complete! All bookings saved to Google Sheets.", "success");
                 loadData();
@@ -254,6 +481,14 @@ const BookingsPage = () => {
         if (!venueLoading && venueId) {
             loadData();
         }
+    }, [venueId, venueLoading]);
+
+    useEffect(() => {
+        if (venueLoading || !venueId) return;
+        const timer = setInterval(() => {
+            loadData(true);
+        }, 8000);
+        return () => clearInterval(timer);
     }, [venueId, venueLoading]);
 
     useEffect(() => {
@@ -332,52 +567,111 @@ const BookingsPage = () => {
     };
 
     // Handle status accept, decline or counter operations
+    // Handle status accept, decline or counter operations.
+    // Google-Sheet-backed rows must never be updated through Firestore, because their docId can be a sheet row id,
+    // not an existing Firestore document id. Updating Firestore for those rows caused the "No document to update" error.
     const handleBookingAction = async (actionType) => {
         if (!selectedDetailBooking) return;
         setIsSubmittingAction(true);
 
         try {
+            const proofUrl = getTwilioProofUrl(twilioCall) || getProofUrlFromBooking(selectedDetailBooking);
+            const callSid = twilioCall?.call_sid || twilioCall?.callSid || "";
+
+            if (isSheetBackedBooking(selectedDetailBooking)) {
+                let nextStatus = "";
+                if (actionType === "accept") nextStatus = "Confirmed";
+                if (actionType === "decline") nextStatus = "Cancelled";
+                if (actionType === "counter") nextStatus = "Pending";
+
+                if (!nextStatus) {
+                    triggerToast("No valid sheet action selected.", "error");
+                    return;
+                }
+
+                await syncProofToGoogleSheet({
+                    bookingId: selectedBookingId(selectedDetailBooking),
+                    proofUrl,
+                    status: nextStatus,
+                    callSid,
+                    sheetName: selectedDetailBooking.sheetName,
+                    rowNumber: selectedDetailBooking.sheetRowNumber,
+                });
+
+                setSelectedDetailBooking((prev) => prev ? {
+                    ...prev,
+                    status: nextStatus,
+                    proof: proofUrl || prev.proof,
+                    voiceProofUrl: proofUrl || prev.voiceProofUrl,
+                    sheetColumns: {
+                        ...(prev.sheetColumns || {}),
+                        Status: nextStatus,
+                        Proof: proofUrl || prev.sheetColumns?.Proof || "",
+                        "Call SID": callSid || prev.sheetColumns?.["Call SID"] || "",
+                    },
+                } : prev);
+
+                await loadData(true);
+                triggerToast(
+                    actionType === "accept"
+                        ? "Google Sheet row confirmed successfully."
+                        : actionType === "decline"
+                        ? "Google Sheet row cancelled successfully."
+                        : "Google Sheet row kept pending for counter follow-up.",
+                    "success"
+                );
+                return;
+            }
+
             if (!selectedDetailBooking.docId) {
-                triggerToast("Cannot update this record — no database reference.", "error");
+                triggerToast("Cannot update this record because it has no database reference.", "error");
                 return;
             }
 
             const isQuotation = selectedDetailBooking.isQuotation;
             const collectionName = isQuotation ? "quotations" : "bookings";
             const bRef = doc(db, collectionName, selectedDetailBooking.docId);
+            const voiceUpdate = proofUrl ? {
+                proof: proofUrl,
+                voiceProofUrl: proofUrl,
+                voiceCallRecordingUrl: proofUrl,
+                voiceCallSid: callSid,
+                voiceCallStatus: twilioCall?.status || ""
+            } : {};
 
-            if (actionType === "accept") {
-                const confirmedUiStatus = "Confirmed / Scheduled";
+            if (actionType === 'accept') {
+                await updateDoc(bRef, {
+                    status: 'Confirmed',
+                    ...voiceUpdate
+                });
 
-                if (isQuotation) {
-                    await updateQuotationStatus(
-                        selectedDetailBooking.docId,
-                        QUOTATION_STATUS.CONFIRMED,
-                        { confirmedAt: new Date().toISOString() }
-                    );
-                } else {
-                    await updateDoc(bRef, {
-                        status: "confirmed",
-                        confirmedAt: new Date().toISOString(),
+                if (selectedDetailBooking.eventDate) {
+                    const venueRef = doc(db, "venues", venueId);
+                    await updateDoc(venueRef, {
+                        blockedDates: arrayUnion(selectedDetailBooking.eventDate)
                     });
                 }
 
-                if (selectedDetailBooking.eventDate) {
-                    try {
-                        const venueRef = doc(db, "venues", venueId);
-                        await updateDoc(venueRef, {
-                            blockedDates: arrayUnion(selectedDetailBooking.eventDate),
-                        });
-                    } catch (venueErr) {
-                        console.error("[Bookings] blockedDates update failed:", venueErr);
-                        triggerToast(
-                            "Booking confirmed, but calendar lock failed. Check venue settings.",
-                            "error"
-                        );
-                    }
-                }
-
-                setSelectedDetailBooking((prev) => ({
+                triggerToast("Booking Proposal Approved & Date Locked Successfully!");
+                setSelectedDetailBooking(prev => ({ ...prev, status: 'Confirmed' }));
+            }
+            else if (actionType === 'decline') {
+                await updateDoc(bRef, {
+                    status: 'Cancelled',
+                    ...voiceUpdate
+                });
+                triggerToast("Booking Proposal Declined.");
+                setSelectedDetailBooking(prev => ({ ...prev, status: 'Cancelled' }));
+            }
+            else if (actionType === 'counter') {
+                const newTotal = parseFloat(counterOfferAmount);
+                await updateDoc(bRef, {
+                    status: 'Counter Offer',
+                    'financials.grandTotal': newTotal,
+                    'financials.remainingBalance': newTotal
+                });
+                triggerToast(`Counter offer of Rs. ${newTotal.toLocaleString()} submitted successfully!`);
+                setSelectedDetailBooking(prev => ({
                     ...prev,
                     status: confirmedUiStatus,
                     raw: {
@@ -487,6 +781,17 @@ const BookingsPage = () => {
                     }
                 }
             }
+            if (proofUrl) {
+                await syncProofToGoogleSheet({
+                    bookingId: selectedDetailBooking.id || selectedDetailBooking.docId,
+                    proofUrl,
+                    status: actionType === 'accept' ? 'Confirmed' : actionType === 'decline' ? 'Cancelled' : selectedDetailBooking.status,
+                    callSid,
+                    sheetName: selectedDetailBooking.sheetName || "",
+                    rowNumber: selectedDetailBooking.sheetRowNumber || ""
+                });
+            }
+            await handleSyncToSheets();
         } catch (err) {
             console.error("Action error: ", err);
             triggerToast(`Failed to update proposal: ${err.message}`, "error");
@@ -494,6 +799,196 @@ const BookingsPage = () => {
             setIsSubmittingAction(false);
         }
     };
+
+    const syncProofToGoogleSheet = async ({ bookingId, proofUrl, status, callSid, sheetName, rowNumber }) => {
+        if (!bookingId && !(sheetName && rowNumber)) return;
+        if (!proofUrl && !status && !callSid) return;
+        try {
+            const response = await fetch("/api/sync-bookings-proof", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    bookingId,
+                    proofUrl: proofUrl || "",
+                    status: status ? normalizeSheetStatus(status) : "",
+                    callSid: callSid || "",
+                    sheetName: sheetName || "",
+                    rowNumber: rowNumber || ""
+                })
+            });
+            const data = await parseJsonResponse(response, "/api/sync-bookings-proof");
+            if (!data.success || data.updated < 1) {
+                throw new Error(data.error || "No matching Google Sheet row was updated.");
+            }
+        } catch (err) {
+            console.warn("Could not sync voice proof to Google Sheet:", err);
+            triggerToast(`Proof sync warning: ${err.message}`, "error");
+        }
+    };
+
+    const buildTwilioBookingPayload = () => {
+        if (!selectedDetailBooking) return null;
+        const raw = selectedDetailBooking.raw || {};
+        const contact = getBookingContactValue(selectedDetailBooking);
+        const venueName = venueData?.name || venueData?.title || venueData?.venueName || venueId || "Selected Venue";
+
+        return {
+            bookingId: selectedBookingId(selectedDetailBooking),
+            customerName: selectedDetailBooking.customer?.name || raw.customer?.name || "Customer",
+            customerPhone: contact,
+            hallName: venueName,
+            guests: raw.eventDetails?.guests || selectedDetailBooking.guests || 0,
+            eventDate: selectedDetailBooking.eventDate || raw.eventDetails?.date || "Selected event date",
+            status: "pending",
+            mode: "browser",
+            sheetName: selectedDetailBooking.sheetName || raw.sheetName || "",
+            sheetRowNumber: selectedDetailBooking.sheetRowNumber || raw.rowNumber || undefined
+        };
+    };
+
+    const refreshTwilioStatus = async () => {
+        setIsTwilioRefreshing(true);
+        setTwilioError("");
+        try {
+            const bookingId = selectedBookingId(selectedDetailBooking);
+            const response = await fetch(`${AI_BACKEND_URL}/api/twilio/booking-info?bookingId=${encodeURIComponent(bookingId)}`);
+            const data = await parseJsonResponse(response, "Backend API");
+            if (!response.ok) throw new Error(data.detail || "Could not refresh call status.");
+            setTwilioCall(data);
+        } catch (err) {
+            setTwilioError(err.message || "Could not refresh Twilio status.");
+        } finally {
+            setIsTwilioRefreshing(false);
+        }
+    };
+
+    const handleStartTwilioCall = async () => {
+        if (!selectedDetailBooking) return;
+        const payload = buildTwilioBookingPayload();
+        if (!isPendingStatus(selectedDetailBooking.status)) {
+            triggerToast("AI call is only available for Pending bookings.", "error");
+            return;
+        }
+        // Twilio trial mode calls the registered mobile browser, not the real customer number.
+        // The customer number is still shown in the panel so the operator knows which booking row is being confirmed.
+        setIsTwilioCalling(true);
+        setTwilioError("");
+        setTwilioCall(null);
+        setTwilioDecisionApplied(false);
+        try {
+            const response = await fetch(`${AI_BACKEND_URL}/api/twilio/initiate-call`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+            const data = await parseJsonResponse(response, "Backend API");
+            if (!response.ok) throw new Error(data.detail || data.error || "Could not start AI confirmation call.");
+            setTwilioCall(data.booking || data);
+            triggerToast("AI confirmation call started on registered mobile browser.", "success");
+        } catch (err) {
+            setTwilioError(`${err.message || "Twilio call failed."} Make sure the mobile browser is registered at PUBLIC_BASE_URL/mobile.html and the FastAPI backend is running.`);
+            triggerToast("AI confirmation call failed.", "error");
+        } finally {
+            setIsTwilioCalling(false);
+        }
+    };
+
+    const handleApplyTwilioDecision = async () => {
+        const status = (twilioCall?.status || "").toLowerCase();
+        if (!selectedDetailBooking || !twilioBelongsToBooking(twilioCall, selectedDetailBooking)) return;
+
+        const finalStatus = status === "accepted" ? "Confirmed" : status === "cancelled" ? "Cancelled" : "";
+        if (!finalStatus) return;
+
+        const proofUrl = getTwilioProofUrl(twilioCall) || getProofUrlFromBooking(selectedDetailBooking);
+        if (isSheetBackedBooking(selectedDetailBooking)) {
+            setIsSubmittingAction(true);
+            try {
+                await syncProofToGoogleSheet({
+                    bookingId: selectedBookingId(selectedDetailBooking),
+                    proofUrl,
+                    status: finalStatus,
+                    callSid: twilioCall?.call_sid || twilioCall?.callSid || "",
+                    sheetName: selectedDetailBooking.sheetName,
+                    rowNumber: selectedDetailBooking.sheetRowNumber
+                });
+                setSelectedDetailBooking((prev) => prev ? {
+                    ...prev,
+                    status: finalStatus,
+                    proof: proofUrl || prev.proof,
+                    voiceProofUrl: proofUrl || prev.voiceProofUrl,
+                    sheetColumns: { ...(prev.sheetColumns || {}), Status: finalStatus, Proof: proofUrl || prev.sheetColumns?.Proof || "" }
+                } : prev);
+                await loadData(true);
+                triggerToast(`Voice decision applied to this row only: ${finalStatus}.`, "success");
+            } catch (err) {
+                triggerToast(`Could not apply voice decision: ${err.message}`, "error");
+            } finally {
+                setIsSubmittingAction(false);
+            }
+            return;
+        }
+
+        if (status === "accepted") {
+            await handleBookingAction("accept");
+        } else if (status === "cancelled") {
+            await handleBookingAction("decline");
+        }
+    };
+
+    useEffect(() => {
+        if (!selectedDetailBooking) return;
+        let ignore = false;
+
+        const poll = async () => {
+            try {
+                const bookingId = selectedBookingId(selectedDetailBooking);
+                const response = await fetch(`${AI_BACKEND_URL}/api/twilio/booking-info?bookingId=${encodeURIComponent(bookingId)}`);
+                const data = await parseJsonResponse(response, "Backend API");
+                if (!ignore && response.ok) {
+                    setTwilioCall(data);
+                }
+            } catch (error) {
+                // Silent polling failure. Manual refresh still shows errors.
+            }
+        };
+
+        poll();
+        const timer = setInterval(poll, 2000);
+        return () => {
+            ignore = true;
+            clearInterval(timer);
+        };
+    }, [selectedDetailBooking?.id, selectedDetailBooking?.docId]);
+
+    useEffect(() => {
+        const status = (twilioCall?.status || "").toLowerCase();
+        if (!selectedDetailBooking || twilioDecisionApplied || isSubmittingAction) return;
+        if (!twilioBelongsToBooking(twilioCall, selectedDetailBooking)) return;
+        if (status !== "accepted" && status !== "cancelled") return;
+
+        setTwilioDecisionApplied(true);
+        handleApplyTwilioDecision();
+    }, [twilioCall?.status, selectedDetailBooking?.id, selectedDetailBooking?.docId, twilioDecisionApplied, isSubmittingAction]);
+
+    useEffect(() => {
+        const proofUrl = getTwilioProofUrl(twilioCall);
+        const bookingId = selectedBookingId(selectedDetailBooking);
+        if (!selectedDetailBooking || !twilioBelongsToBooking(twilioCall, selectedDetailBooking)) return;
+        if (!bookingId || !proofUrl) return;
+        const key = `${bookingId}|${selectedDetailBooking.sheetName || ""}|${selectedDetailBooking.sheetRowNumber || ""}|${proofUrl}`;
+        if (lastSyncedProofKey === key) return;
+        setLastSyncedProofKey(key);
+        syncProofToGoogleSheet({
+            bookingId,
+            proofUrl,
+            status: twilioCall?.status,
+            callSid: twilioCall?.call_sid || twilioCall?.callSid || "",
+            sheetName: selectedDetailBooking.sheetName || "",
+            rowNumber: selectedDetailBooking.sheetRowNumber || ""
+        });
+    }, [twilioCall?.proof_url, twilioCall?.public_recording_url, twilioCall?.call_recording_url, selectedDetailBooking?.id, selectedDetailBooking?.docId, lastSyncedProofKey]);
+
 
     // Setup communication thread state memory segment and redirect
     const handleInitiateChat = async () => {
@@ -546,6 +1041,15 @@ const BookingsPage = () => {
 
     const venueBookings = mergeBookingRows(firestoreBookings, legacyBookings, sheetBookings);
     const allBookings = [...quotationBookings, ...venueBookings];
+
+    useEffect(() => {
+        if (!selectedDetailBooking) return;
+        const currentKey = selectedDetailBooking.docId || selectedDetailBooking.id;
+        const updated = allBookings.find((booking) => (booking.docId || booking.id) === currentKey);
+        if (updated) {
+            setSelectedDetailBooking(updated);
+        }
+    }, [sheetBookings, firestoreBookings, legacyBookings, quotationBookings]);
 
     const bookingStats = useMemo(() => {
         const normalize = (s) => (s || "").toLowerCase();
@@ -938,7 +1442,7 @@ const BookingsPage = () => {
                         <section className="space-y-6">
                             <BookingFilters onNewBooking={() => setShowWalkinForm(true)} />
                             
-                            {/* Interactive Live-Firestore Bookings Table */}
+                            {/* Live Google Sheet and Firestore Bookings Table */}
                             <div className="bg-white rounded-[2.5rem] shadow-xl overflow-hidden border border-outline-variant">
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-left border-collapse">
@@ -951,20 +1455,21 @@ const BookingsPage = () => {
                                                 <th className="p-6 text-[10px] font-black uppercase text-on-surface-variant tracking-[0.2em] text-center">Event Dates</th>
                                                 <th className="p-6 text-[10px] font-black uppercase text-on-surface-variant tracking-[0.2em] text-center">Status</th>
                                                 <th className="p-6 text-[10px] font-black uppercase text-on-surface-variant tracking-[0.2em] text-right">Amount</th>
+                                                <th className="p-6 text-[10px] font-black uppercase text-on-surface-variant tracking-[0.2em] text-center">Proof</th>
                                                 <th className="p-6 w-16"></th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-outline-variant/30 text-slate-700">
                                             {isLoading && allBookings.length === 0 ? (
                                                 <tr>
-                                                    <td colSpan="8" className="p-12 text-center text-outline font-bold uppercase tracking-widest text-xs">
+                                                    <td colSpan="9" className="p-12 text-center text-outline font-bold uppercase tracking-widest text-xs">
                                                         <span className="animate-spin inline-block w-6 h-6 border-4 border-primary border-t-transparent rounded-full mr-3 align-middle"></span>
-                                                        Loading physical bookings ledger...
+                                                        Loading live Google Sheet and booking ledger...
                                                     </td>
                                                 </tr>
                                             ) : allBookings.length === 0 ? (
                                                 <tr>
-                                                    <td colSpan="8" className="p-12 text-center text-outline font-bold uppercase tracking-widest text-xs">
+                                                    <td colSpan="9" className="p-12 text-center text-outline font-bold uppercase tracking-widest text-xs">
                                                         No bookings or quotation requests yet.
                                                     </td>
                                                 </tr>
@@ -1021,21 +1526,58 @@ const BookingsPage = () => {
                                                          </div>
                                                      </td>
                                                     <td className="p-5 text-center">
-                                                        <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border shadow-sm
-                                                            ${booking.status === 'Completed' 
-                                                                ? 'bg-slate-100 text-slate-700 border-slate-200' 
-                                                                : isQuotationActionable(booking.status)
-                                                                ? 'bg-amber-500/10 text-amber-600 border-amber-500/20'
-                                                                : booking.status === 'Declined'
-                                                                ? 'bg-rose-500/10 text-rose-600 border-rose-500/20'
-                                                                : 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30'}`}>
-                                                            {booking.status}
-                                                        </span>
+                                                        {isSheetBackedBooking(booking) ? (
+                                                            <select
+                                                                value={normalizeSheetStatus(booking.status)}
+                                                                onClick={(e) => e.stopPropagation()}
+                                                                onChange={(e) => {
+                                                                    e.stopPropagation();
+                                                                    syncSheetStatusOnly(booking, e.target.value);
+                                                                }}
+                                                                className={`px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border shadow-sm bg-white outline-none cursor-pointer
+                                                                    ${isPendingStatus(booking.status)
+                                                                        ? 'text-amber-600 border-amber-500/20 bg-amber-500/10'
+                                                                        : statusKey(booking.status) === 'confirmed'
+                                                                        ? 'text-emerald-600 border-emerald-500/20 bg-emerald-500/10'
+                                                                        : 'text-rose-600 border-rose-500/20 bg-rose-500/10'}`}
+                                                            >
+                                                                {SHEET_STATUS_OPTIONS.map((option) => (
+                                                                    <option key={option} value={option}>{option}</option>
+                                                                ))}
+                                                            </select>
+                                                        ) : (
+                                                            <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border shadow-sm
+                                                                ${booking.status === 'Completed'
+                                                                    ? 'bg-slate-100 text-slate-700 border-slate-200'
+                                                                    : isPendingStatus(booking.status) || booking.status === 'Quote Request'
+                                                                    ? 'bg-amber-500/10 text-amber-600 border-amber-500/20'
+                                                                    : statusKey(booking.status) === 'confirmed'
+                                                                    ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
+                                                                    : 'bg-rose-500/10 text-rose-600 border-rose-500/20'}`}>
+                                                                {normalizeSheetStatus(booking.status)}
+                                                            </span>
+                                                        )}
                                                     </td>
                                                     <td className="p-5 text-right font-black text-on-surface tracking-tight text-sm">
                                                         {booking.isQuotation && booking.amount <= 0
                                                             ? "Estimate pending"
                                                             : `Rs. ${booking.amount.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+                                                    </td>
+                                                    <td className="p-5 text-center">
+                                                        {getProofUrlFromBooking(booking) ? (
+                                                            <a
+                                                                href={getProofUrlFromBooking(booking)}
+                                                                target="_blank"
+                                                                rel="noreferrer"
+                                                                onClick={(e) => e.stopPropagation()}
+                                                                className="inline-flex items-center gap-1 rounded-full bg-indigo-50 border border-indigo-100 px-3 py-1.5 text-[9px] font-black uppercase tracking-wider text-indigo-700 hover:bg-indigo-100"
+                                                            >
+                                                                <span className="material-symbols-outlined text-xs">play_circle</span>
+                                                                Play
+                                                            </a>
+                                                        ) : (
+                                                            <span className="text-[9px] font-black uppercase tracking-wider text-slate-300">No proof</span>
+                                                        )}
                                                     </td>
                                                     <td className="p-5 text-right">
                                                         <button className="material-symbols-outlined text-outline group-hover:text-primary transition-all p-2 hover:bg-slate-100 rounded-full">
@@ -1656,7 +2198,7 @@ const BookingsPage = () => {
                                           : isQuotationActionable(selectedDetailBooking.status)
                                           ? 'bg-amber-500/10 text-amber-600 border-amber-500/20' :
                                           selectedDetailBooking.status === 'Counter Offer' ? 'bg-pink-500/10 text-pink-600 border-pink-500/20' :
-                                          selectedDetailBooking.status === 'Declined' ? 'bg-rose-500/10 text-rose-600 border-rose-500/20' :
+                                          normalizeSheetStatus(selectedDetailBooking.status) === 'Cancelled' ? 'bg-rose-500/10 text-rose-600 border-rose-500/20' :
                                           'bg-slate-100 text-slate-700 border-slate-200'}`}>
                                         {selectedDetailBooking.status}
                                     </span>
@@ -1795,6 +2337,43 @@ const BookingsPage = () => {
                                         </p>
                                     </div>
                                 </div>
+
+                                {/* Voice proof recording */}
+                                {(getTwilioProofUrl(twilioCall) || getProofUrlFromBooking(selectedDetailBooking)) && (
+                                    <div className="space-y-3 bg-indigo-50/60 p-4.5 rounded-3xl border border-indigo-100">
+                                        <h4 className="text-[10px] font-black text-indigo-600 uppercase tracking-widest block">Voice Confirmation Proof</h4>
+                                        <p className="text-[11px] font-bold text-indigo-700 leading-relaxed">
+                                            This is the recorded proof of the AI confirmation call. It is also synced to the Google Sheet Proof column.
+                                        </p>
+                                        <audio controls className="w-full">
+                                            <source src={getTwilioProofUrl(twilioCall) || getProofUrlFromBooking(selectedDetailBooking)} type="audio/mpeg" />
+                                        </audio>
+                                        <a
+                                            href={getTwilioProofUrl(twilioCall) || getProofUrlFromBooking(selectedDetailBooking)}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-indigo-700 hover:text-indigo-900"
+                                        >
+                                            <span className="material-symbols-outlined text-sm">open_in_new</span>
+                                            Open recording link
+                                        </a>
+                                    </div>
+                                )}
+
+                                {/* Live Google Sheet columns */}
+                                {selectedDetailBooking.sheetColumns && Object.keys(selectedDetailBooking.sheetColumns).length > 0 && (
+                                    <div className="space-y-3 bg-white p-4.5 rounded-3xl border border-slate-100 shadow-sm">
+                                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Live Google Sheet Columns</h4>
+                                        <div className="max-h-56 overflow-y-auto space-y-2 pr-1">
+                                            {Object.entries(selectedDetailBooking.sheetColumns).map(([key, value]) => (
+                                                <div key={key} className="grid grid-cols-5 gap-2 text-[10px] border-b border-slate-100 pb-1.5">
+                                                    <span className="col-span-2 font-black uppercase tracking-wider text-slate-400 break-all">{key}</span>
+                                                    <span className="col-span-3 font-bold text-slate-700 break-all">{String(value || "-")}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Footer operational buttons actions panel */}
@@ -1852,6 +2431,108 @@ const BookingsPage = () => {
                                         </span>
                                         <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-3">
                                             Accept & decline actions are closed for this booking
+                                        </p>
+                                    </div>
+                                )}
+
+                                {/* Twilio AI voice confirmation panel. Calls are allowed only for Pending rows. */}
+                                {isPendingStatus(selectedDetailBooking.status) ? (
+                                    <div className="bg-white p-4 rounded-2xl border border-indigo-100 shadow-sm space-y-3 text-left">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div>
+                                                <label className="text-[9px] font-black text-indigo-600 uppercase tracking-widest px-0.5 block">AI Voice Confirmation Call</label>
+                                                <p className="text-[11px] text-slate-500 font-bold leading-relaxed mt-1">
+                                                    Sends this booking row only to the registered mobile browser receiver and asks for confirmation or cancellation by voice.
+                                                </p>
+                                            </div>
+                                            <span className={`text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-wider border ${
+                                                twilioBelongsToBooking(twilioCall, selectedDetailBooking) && (twilioCall?.status || "pending") === "accepted"
+                                                    ? "bg-emerald-50 text-emerald-600 border-emerald-100"
+                                                    : twilioBelongsToBooking(twilioCall, selectedDetailBooking) && (twilioCall?.status || "pending") === "cancelled"
+                                                    ? "bg-rose-50 text-rose-600 border-rose-100"
+                                                    : "bg-indigo-50 text-indigo-600 border-indigo-100"
+                                            }`}>
+                                                {twilioBelongsToBooking(twilioCall, selectedDetailBooking) ? (twilioCall?.status || "Ready") : "Ready"}
+                                            </span>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-3 text-[10px] font-bold text-slate-500">
+                                            <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
+                                                <span className="block uppercase tracking-wider text-slate-400 mb-1">Customer</span>
+                                                <span className="text-slate-700">{selectedDetailBooking.customer?.name || "Customer"}</span>
+                                            </div>
+                                            <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
+                                                <span className="block uppercase tracking-wider text-slate-400 mb-1">Displayed Number</span>
+                                                <span className="text-slate-700 break-all">{getBookingContactValue(selectedDetailBooking) || "Not available"}</span>
+                                            </div>
+                                        </div>
+
+                                        <div className={`rounded-xl p-3 border text-[10px] font-black uppercase tracking-wider ${
+                                            twilioCall?.mobile_registered
+                                                ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+                                                : "bg-amber-50 text-amber-700 border-amber-100"
+                                        }`}>
+                                            {twilioCall?.mobile_registered
+                                                ? "Mobile browser registered. You can make the AI call for this pending row."
+                                                : "Mobile browser not registered. Open your ngrok URL with /mobile.html on phone and tap Register."}
+                                        </div>
+
+                                        {twilioBelongsToBooking(twilioCall, selectedDetailBooking) && twilioCall?.call_sid && (
+                                            <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-3 text-[10px] font-bold text-indigo-700 break-all">
+                                                Call SID: {twilioCall.call_sid}
+                                            </div>
+                                        )}
+
+                                        {twilioError && (
+                                            <div className="bg-rose-50 border border-rose-100 rounded-xl p-3 text-[11px] font-bold text-rose-600 leading-relaxed">
+                                                {twilioError}
+                                            </div>
+                                        )}
+
+                                        {twilioBelongsToBooking(twilioCall, selectedDetailBooking) && getTwilioProofUrl(twilioCall) && (
+                                            <div className="space-y-2 rounded-xl bg-indigo-50/70 border border-indigo-100 p-3">
+                                                <p className="text-[9px] font-black uppercase tracking-widest text-indigo-700">Recorded proof from both sides</p>
+                                                <audio controls className="w-full">
+                                                    <source src={getTwilioProofUrl(twilioCall)} type="audio/mpeg" />
+                                                </audio>
+                                            </div>
+                                        )}
+
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <button
+                                                onClick={handleStartTwilioCall}
+                                                disabled={isTwilioCalling || !(twilioCall?.mobile_registered) || !isPendingStatus(selectedDetailBooking.status)}
+                                                className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-full font-black text-[10px] uppercase tracking-widest transition-all disabled:opacity-50 border-0 flex items-center justify-center gap-1 cursor-pointer"
+                                            >
+                                                <span className="material-symbols-outlined text-sm">call</span>
+                                                {isTwilioCalling ? "Calling..." : "Make AI Call"}
+                                            </button>
+                                            <button
+                                                onClick={refreshTwilioStatus}
+                                                disabled={isTwilioRefreshing}
+                                                className="px-5 py-3 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-[10px] uppercase tracking-widest transition-all disabled:opacity-50 border-0 flex items-center justify-center gap-1 cursor-pointer"
+                                            >
+                                                <span className="material-symbols-outlined text-sm">sync</span>
+                                                {isTwilioRefreshing ? "Checking" : "Refresh"}
+                                            </button>
+                                        </div>
+
+                                        {twilioBelongsToBooking(twilioCall, selectedDetailBooking) && (twilioCall?.status === "accepted" || twilioCall?.status === "cancelled") && (
+                                            <button
+                                                onClick={handleApplyTwilioDecision}
+                                                disabled={isSubmittingAction}
+                                                className="w-full bg-white hover:bg-slate-100 text-indigo-700 py-3 rounded-full font-black text-[10px] uppercase tracking-widest transition-all border border-indigo-100 shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
+                                            >
+                                                <span className="material-symbols-outlined text-sm font-black">task_alt</span>
+                                                Apply Voice Decision Now
+                                            </button>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 text-left">
+                                        <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest block">AI Voice Confirmation Call</label>
+                                        <p className="text-[11px] text-slate-500 font-bold leading-relaxed mt-1">
+                                            This row is already marked as {normalizeSheetStatus(selectedDetailBooking.status)}. AI calls are available only for rows with Pending status.
                                         </p>
                                     </div>
                                 )}
