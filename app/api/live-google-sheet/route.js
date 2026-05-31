@@ -20,6 +20,21 @@ function getByAliases(columns, aliases, fallback = "") {
   return fallback;
 }
 
+
+function extractUrlFromHyperlinkFormula(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const match = text.match(/^=?HYPERLINK\(\s*"([^"]+)"/i) || text.match(/^=?HYPERLINK\(\s*'([^']+)'/i);
+  return match ? match[1] : text;
+}
+
+function normalizeProofValue(value) {
+  const url = extractUrlFromHyperlinkFormula(value);
+  const lower = String(url || "").trim().toLowerCase();
+  if (["play", "play recording", "recording", "no proof", "not found"].includes(lower)) return "";
+  return url;
+}
+
 function makeAuth() {
   const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   const key = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n");
@@ -127,6 +142,7 @@ export async function GET() {
       const valuesRes = await sheets.spreadsheets.values.get({
         spreadsheetId,
         range: `${safeSheetName(title)}!A:ZZ`,
+        valueRenderOption: "FORMULA",
       });
       const rows = valuesRes.data.values || [];
       if (rows.length < 1) continue;
@@ -153,7 +169,7 @@ export async function GET() {
         const status = normalizeStatus(getByAliases(columns, ["Status", "Call Status", "Confirmation Status"], "Pending"));
         const source = getByAliases(columns, ["Source", "Booking Source"], `Google Sheet: ${title}`);
         const amount = getByAliases(columns, ["Amount", "Grand Total", "Total", "Total Amount", "Price", "Package Amount"], 0);
-        const proof = getByAliases(columns, ["Proof", "Voice Proof", "Recording", "Recording Proof", "Call Recording", "Recording URL"], "");
+        const proof = normalizeProofValue(getByAliases(columns, ["Proof", "Voice Proof", "Recording", "Recording Proof", "Call Recording", "Recording URL"], ""));
         const targetVenueId = getByAliases(columns, ["targetVenueId", "Venue ID", "VenueId", "venueId", "Venue", "Hall Slug"], "");
 
         bookings.push({

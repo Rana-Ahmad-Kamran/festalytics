@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Form, Query, Request
 from fastapi.responses import JSONResponse
+from typing import Any
+
 from pydantic import BaseModel
 
 from app.services.twilio_service import (
@@ -20,16 +22,19 @@ router = APIRouter(prefix="/twilio", tags=["Twilio Voice Automation"])
 
 
 class BookingPayload(BaseModel):
-    bookingId: str | None = None
-    customerName: str | None = None
-    customerPhone: str | None = None
-    hallName: str | None = None
-    guests: int | None = None
-    eventDate: str | None = None
-    status: str | None = None
-    mode: str | None = "browser"
-    sheetName: str | None = None
-    sheetRowNumber: int | None = None
+    # Keep these loose because online quotation rows can contain Firestore Timestamp objects,
+    # nested objects, missing dates, or sheet row values. The service layer sanitizes them.
+    bookingId: Any | None = None
+    customerName: Any | None = None
+    customerPhone: Any | None = None
+    displayedNumber: Any | None = None
+    hallName: Any | None = None
+    guests: Any | None = None
+    eventDate: Any | None = None
+    status: Any | None = None
+    mode: Any | None = "browser"
+    sheetName: Any | None = None
+    sheetRowNumber: Any | None = None
 
 
 @router.get("/token")
