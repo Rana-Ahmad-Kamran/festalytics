@@ -7,6 +7,7 @@ import {
   buildMonthGrid,
   getMonthLabel,
   toDateKey,
+  isPastDateKey,
 } from "@/lib/firestore/venueCalendar";
 
 const CUSTOMER_STATUS_STYLES = {
@@ -15,6 +16,7 @@ const CUSTOMER_STATUS_STYLES = {
   booked: "bg-[#D6336C] text-white shadow-sm cursor-not-allowed",
   blackout: "bg-slate-400 text-white cursor-not-allowed",
   pending: "bg-amber-100 text-amber-800 border border-amber-300 cursor-not-allowed",
+  past: "bg-gray-100 text-gray-300 border border-gray-100 cursor-not-allowed line-through decoration-gray-300",
 };
 
 const STATUS_LABELS = {
@@ -107,9 +109,11 @@ export default function PublicVenueCalendar({
               }
 
               const status = cal.getStatus(cell.dateKey);
+              const isPast = isPastDateKey(cell.dateKey);
               const isSelected = selectedDateKey === cell.dateKey;
               const isToday = cell.dateKey === todayKey;
               const selectable = cal.isDateSelectable(cell.dateKey);
+              const styleKey = isPast ? "past" : status;
 
               return (
                 <button
@@ -117,11 +121,16 @@ export default function PublicVenueCalendar({
                   type="button"
                   disabled={!selectable}
                   onClick={() => selectable && onSelectDate?.(cell.dateKey)}
-                  title={`${cell.dateKey} — ${STATUS_LABELS[status]}`}
+                  title={
+                    isPast
+                      ? `${cell.dateKey} — Past date (not selectable)`
+                      : `${cell.dateKey} — ${STATUS_LABELS[status]}`
+                  }
                   className={`h-10 rounded-xl flex items-center justify-center text-xs font-black select-none transition-all
-                    ${CUSTOMER_STATUS_STYLES[status]}
+                    ${CUSTOMER_STATUS_STYLES[styleKey]}
                     ${isSelected ? "ring-2 ring-[#D6336C] ring-offset-2" : ""}
-                    ${isToday && !isSelected ? "ring-1 ring-[#D6336C]/40" : ""}`}
+                    ${isToday && !isSelected && !isPast ? "ring-1 ring-[#D6336C]/40" : ""}
+                    ${!selectable && !isPast ? "opacity-80" : ""}`}
                 >
                   {cell.day}
                 </button>
@@ -161,6 +170,12 @@ export default function PublicVenueCalendar({
                 </span>
               </div>
               <div className="flex items-center gap-3">
+                <div className="w-5 h-5 rounded-lg bg-gray-100 border border-gray-200 shadow-sm line-through text-[8px] text-gray-300 flex items-center justify-center font-bold">
+                  1
+                </div>
+                <span className="text-xs font-bold text-gray-700">Past date (not selectable)</span>
+              </div>
+              <div className="flex items-center gap-3">
                 <div className="w-5 h-5 rounded-lg bg-white border border-gray-200 shadow-sm" />
                 <span className="text-xs font-bold text-gray-700">
                   {STATUS_LABELS.available}
@@ -175,7 +190,7 @@ export default function PublicVenueCalendar({
             </span>
             <p className="text-xs text-gray-600 leading-relaxed">
               Click an available date on the calendar or use the date field in the quote form.
-              Unavailable dates cannot be selected.
+              Past dates and unavailable slots cannot be selected.
             </p>
           </div>
         </div>

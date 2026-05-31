@@ -8,6 +8,7 @@ import {
   buildVenueImagePath,
   mergePublicVenues,
   getPublicVenueDocId,
+  formatVenuePriceRange,
 } from '@/lib/publicVenues';
 import { resolveCateringPackages, getActivePricing, formatRs } from '@/lib/venuePricing';
 
@@ -333,7 +334,7 @@ const VenueSelection = ({ eventData, updateFormData, handleBack }) => {
                         </div>
                         <div className="flex items-center gap-1.5 font-medium text-[#D6336C]">
                           <Store size={14} className="shrink-0" />{' '}
-                          {hall.price_range || 'Contact for price'}
+                          {formatVenuePriceRange(hall)}
                         </div>
                       </div>
                       <button

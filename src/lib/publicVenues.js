@@ -106,3 +106,41 @@ export function buildVenueImagePath(hall) {
     ? `/Marriage_hall/${normalizedName}/1.jpeg`
     : PLACEHOLDER_HALL_IMAGE;
 }
+
+function parsePerHeadPrice(value) {
+  const parsed = parseInt(String(value || "").replace(/,/g, ""), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+/** Per-head range from chicken → mutton, e.g. "Rs 2000 - 4100" */
+export function formatVenuePriceRange(venue) {
+  if (!venue) return "Contact for price";
+
+  const perHeadPrices = [
+    parsePerHeadPrice(venue.one_dish_chicken),
+    parsePerHeadPrice(venue.one_dish_beef),
+    parsePerHeadPrice(venue.one_dish_mutton),
+  ].filter(Boolean);
+
+  if (perHeadPrices.length >= 2) {
+    const min = Math.min(...perHeadPrices);
+    const max = Math.max(...perHeadPrices);
+    return `Rs ${min} - ${max}`;
+  }
+
+  if (perHeadPrices.length === 1) {
+    return `Rs ${perHeadPrices[0]}`;
+  }
+
+  if (venue.price_range) {
+    const numbers = String(venue.price_range).replace(/,/g, "").match(/\d+/g);
+    if (numbers?.length >= 2) {
+      return `Rs ${numbers[0]} - ${numbers[numbers.length - 1]}`;
+    }
+    if (numbers?.length === 1) {
+      return `Rs ${numbers[0]}`;
+    }
+  }
+
+  return "Contact for price";
+}

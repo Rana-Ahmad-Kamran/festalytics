@@ -31,6 +31,17 @@ export function getMonthLabel(year, monthIndex) {
   });
 }
 
+/** @returns {string} YYYY-MM-DD for local today */
+export function getTodayDateKey() {
+  const now = new Date();
+  return toDateKey(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
+export function isPastDateKey(dateKey) {
+  if (!dateKey) return false;
+  return dateKey < getTodayDateKey();
+}
+
 export function buildMonthGrid(year, monthIndex) {
   const firstDay = new Date(year, monthIndex, 1).getDay();
   const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
@@ -53,8 +64,13 @@ export function buildMonthGrid(year, monthIndex) {
     });
   }
 
+  let nextMonthDay = 1;
   while (cells.length % 7 !== 0) {
-    cells.push({ day: cells.length, dateKey: null, muted: true });
+    cells.push({
+      day: nextMonthDay++,
+      dateKey: null,
+      muted: true,
+    });
   }
 
   return cells;
