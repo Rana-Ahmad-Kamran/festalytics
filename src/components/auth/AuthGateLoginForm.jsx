@@ -66,7 +66,7 @@ export default function AuthGateLoginForm({ onSuccess, onClose }) {
       }
 
       setLoading(false);
-      onSuccess?.();
+      await onSuccess?.();
       onClose?.();
     } catch (err) {
       setLoading(false);

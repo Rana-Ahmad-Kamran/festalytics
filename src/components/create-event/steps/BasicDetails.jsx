@@ -1,7 +1,8 @@
 import React from 'react';
-import { Calendar, MapPin, Users, Clock } from 'lucide-react';
+import { MapPin, Users, Clock } from 'lucide-react';
 import { EVENT_TYPES } from '../data';
 import { lahoreAreas } from '../../../data/lahoreAreas';
+import EventDatePicker from '@/components/EventDatePicker';
 
 const BasicDetails = ({ eventData, updateFormData }) => {
     return (
@@ -39,16 +40,14 @@ const BasicDetails = ({ eventData, updateFormData }) => {
 
                 <div className="grid grid-cols-2 gap-4">
                     <div>
-                        <label className="block text-sm font-bold text-gray-700 mb-2">Date</label>
-                        <div className="relative">
-                            <Calendar className="absolute top-3.5 left-3.5 text-gray-400 w-5 h-5 pointer-events-none" />
-                            <input
-                                type="date"
-                                className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:border-[#D6336C] focus:ring-2 focus:ring-pink-100 outline-none"
-                                value={eventData.date}
-                                onChange={(e) => updateFormData('date', e.target.value)}
-                            />
-                        </div>
+                        <EventDatePicker
+                            id="create-event-date"
+                            label="Date"
+                            required
+                            value={eventData.date}
+                            onChange={(value) => updateFormData('date', value)}
+                            hint="Pick today or a future date for your event."
+                        />
                     </div>
                     <div>
                         <label className="block text-sm font-bold text-gray-700 mb-2">Time</label>

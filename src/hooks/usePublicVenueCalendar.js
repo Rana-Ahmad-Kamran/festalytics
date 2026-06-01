@@ -8,6 +8,7 @@ import {
   subscribeVenueCalendar,
   getDateStatus,
   normalizeLegacyDayNumbers,
+  isPastDateKey,
 } from "@/lib/firestore/venueCalendar";
 
 /**
@@ -153,7 +154,7 @@ export function usePublicVenueCalendar(venueSlug) {
   );
 
   const isDateSelectable = (dateKey) => {
-    if (!dateKey) return false;
+    if (!dateKey || isPastDateKey(dateKey)) return false;
     const status = getDateStatus(dateKey, calendarMeta);
     return status === "available";
   };

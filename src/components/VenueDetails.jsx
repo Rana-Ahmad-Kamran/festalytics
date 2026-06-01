@@ -15,8 +15,9 @@ import {
   ZAYDAN_VENUE_SLUG,
 } from "@/lib/google/zaydanCallingSheet";
 import PublicVenueCalendar from "@/components/venue/PublicVenueCalendar";
-import { getDateStatus } from "@/lib/firestore/venueCalendar";
+import { getDateStatus, isPastDateKey } from "@/lib/firestore/venueCalendar";
 import { usePublicVenueCalendar } from "@/hooks/usePublicVenueCalendar";
+import EventDatePicker from "@/components/EventDatePicker";
 import CustomerVenueChat from "@/components/chat/CustomerVenueChat";
 import VenueFaqSection from "@/components/venue/VenueFaqSection";
 
@@ -674,6 +675,11 @@ const VenueDetails = () => {
       return;
     }
 
+    if (isPastDateKey(eventDate)) {
+      triggerQuoteToast("Event date cannot be in the past. Please choose today or a future date.", "error");
+      return;
+    }
+
     const docId = getFirestoreDocId(venue);
 
     if (publicCal.isDateUnavailable(eventDate)) {
@@ -919,21 +925,22 @@ const VenueDetails = () => {
                     <div className="space-y-3.5 bg-gray-50/50 p-4.5 rounded-2xl border border-gray-100">
                       <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">2. Event Schedule</span>
 
-                      <div className="space-y-1">
-                        <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest px-0.5">Preferred Event Date *</label>
-                        <input 
-                          type="date" 
-                          required
-                          value={eventDate}
-                          onChange={(e) => setEventDate(e.target.value)}
-                          className="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-gray-800 focus:ring-1 focus:ring-[#D6336C] focus:border-[#D6336C] outline-none transition-all"
-                        />
-                        {eventDate && publicCal.isDateUnavailable(eventDate) && (
-                          <span className="text-[9px] text-red-500 font-black uppercase px-0.5 flex items-center gap-1 mt-1 animate-pulse">
-                            ✕ This date is not available — choose another from the calendar
-                          </span>
-                        )}
-                      </div>
+                      <EventDatePicker
+                        id="venue-quote-date"
+                        variant="compact"
+                        label="Preferred Event Date"
+                        required
+                        value={eventDate}
+                        onChange={setEventDate}
+                        hint=""
+                        error={
+                          eventDate && publicCal.isDateUnavailable(eventDate)
+                            ? "This date is not available — choose another from the calendar"
+                            : eventDate && isPastDateKey(eventDate)
+                            ? "Past dates cannot be selected"
+                            : ""
+                        }
+                      />
 
                       <div className="space-y-1">
                         <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest px-0.5">Event Slot *</label>

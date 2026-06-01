@@ -21,6 +21,8 @@ import {
     listenToVenueBookings,
     fetchLegacyVenueBookings,
 } from "@/lib/firestore/bookings";
+import EventDatePicker from "@/components/EventDatePicker";
+import { isPastDateKey } from "@/lib/firestore/venueCalendar";
 import {
     buildChatId,
     ensureChatRoom,
@@ -1281,6 +1283,11 @@ const syncProofToGoogleSheet = async ({ bookingId, proofUrl, status, callSid, sh
             return;
         }
 
+        if (isPastDateKey(eventDate)) {
+            triggerToast("Event date cannot be in the past. Please choose today or a future date.", "error");
+            return;
+        }
+
         // Check if date is already locked (blocked)
         if (venueData?.blockedDates && venueData.blockedDates.includes(eventDate)) {
             triggerToast(`Date ${eventDate} is already locked for another booking!`, "error");
@@ -1851,20 +1858,21 @@ const syncProofToGoogleSheet = async ({ bookingId, proofUrl, status, callSid, sh
                                     </h3>
 
                                     <div className="grid grid-cols-1 sm:grid-cols-4 gap-6">
-                                        <div className="space-y-2">
-                                            <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest px-1">Event Date *</label>
-                                            <input 
-                                                type="date" 
+                                        <div className="space-y-2 sm:col-span-2">
+                                            <EventDatePicker
+                                                id="walkin-event-date"
+                                                variant="vendor"
+                                                label="Event Date"
                                                 required
                                                 value={eventDate}
-                                                onChange={(e) => setEventDate(e.target.value)}
-                                                className="w-full bg-slate-50 border-2 border-transparent rounded-2xl px-5 py-3 focus:bg-white focus:border-primary focus:ring-0 text-on-surface font-bold text-sm transition-all"
+                                                onChange={setEventDate}
+                                                hint="Walk-in bookings must be scheduled for today or a future date."
+                                                error={
+                                                    eventDate && venueData?.blockedDates?.includes(eventDate)
+                                                        ? "Already booked on this date"
+                                                        : ""
+                                                }
                                             />
-                                            {venueData?.blockedDates && venueData.blockedDates.includes(eventDate) && (
-                                                <span className="text-[10px] text-error font-black uppercase px-1 flex items-center gap-1 mt-1">
-                                                    <span className="material-symbols-outlined text-xs">block</span> Already Booked!
-                                                </span>
-                                            )}
                                         </div>
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest px-1">Event Timing *</label>

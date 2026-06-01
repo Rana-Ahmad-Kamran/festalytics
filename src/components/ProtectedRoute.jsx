@@ -16,6 +16,7 @@ const ProtectedRoute = ({ children, allowedRole }) => {
             if (!currentUser) {
                 setLoading(false);
                 setUser(null);
+                setIsAuthorized(false);
                 setRedirectTo('/');
                 return;
             }
@@ -23,7 +24,6 @@ const ProtectedRoute = ({ children, allowedRole }) => {
             setUser(currentUser);
 
             try {
-                // Fetch user role from Firestore to double-check access
                 const userDocRef = doc(db, 'users', currentUser.uid);
                 const userDocSnap = await getDoc(userDocRef);
 
@@ -51,7 +51,6 @@ const ProtectedRoute = ({ children, allowedRole }) => {
                         setRedirectTo('/verify-email');
                         setIsAuthorized(false);
                     } else if (userData.role === allowedRole) {
-                        setRedirectTo('/');
                         setIsAuthorized(true);
                     } else {
                         console.warn(`Role mismatch: Expected ${allowedRole}, got ${userData.role}`);
@@ -59,8 +58,6 @@ const ProtectedRoute = ({ children, allowedRole }) => {
                         setIsAuthorized(false);
                     }
                 } else {
-                    // Fallback: If no doc, we might want to check if the allowedRole matches what we expect or just allow 'user'
-                    // For strict security, we deny if no role is found
                     console.warn("No user document found for role verification.");
                     setRedirectTo('/');
                     setIsAuthorized(false);
@@ -75,24 +72,25 @@ const ProtectedRoute = ({ children, allowedRole }) => {
         });
 
         return () => unsubscribe();
-    }, [allowedRole, router]);
+    }, [allowedRole]);
 
-    if (loading) {
+    useEffect(() => {
+        if (loading) return;
+        if (!user) {
+            router.replace('/');
+            return;
+        }
+        if (!isAuthorized) {
+            router.replace(redirectTo);
+        }
+    }, [loading, user, isAuthorized, redirectTo, router]);
+
+    if (loading || !user || !isAuthorized) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-gray-50">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-800"></div>
             </div>
         );
-    }
-
-    if (!user) {
-        router.push('/');
-        return null;
-    }
-
-    if (!isAuthorized) {
-        router.push(redirectTo);
-        return null;
     }
 
     return children;
