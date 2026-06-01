@@ -8,6 +8,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { useRouter } from "next/navigation";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "@/firebase";
@@ -21,6 +22,7 @@ import {
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
+  const router = useRouter();
   const [user, setUser] = useState(null);
   const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -52,9 +54,33 @@ export function AuthProvider({ children }) {
     }
   }, [closeAuthGate]);
 
-  const handleAuthSuccess = useCallback(() => {
-    resumePendingAction();
-  }, [resumePendingAction]);
+  const handleAuthSuccess = useCallback(async () => {
+    const hadPendingAction = Boolean(pendingCallbackRef.current);
+
+    if (hadPendingAction) {
+      resumePendingAction();
+      return;
+    }
+
+    closeAuthGate();
+
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+
+    try {
+      const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+      const userRole = userDoc.exists() ? userDoc.data().role : "user";
+
+      if (userRole === "vendor") {
+        router.push("/vendor-dashboard");
+      } else {
+        router.push("/user-dashboard");
+      }
+    } catch (err) {
+      console.error("[AuthProvider] post-login redirect:", err);
+      router.push("/user-dashboard");
+    }
+  }, [closeAuthGate, resumePendingAction, router]);
 
   const requireAuth = useCallback(
     ({ action, payload = {}, onAuthed }) => {
