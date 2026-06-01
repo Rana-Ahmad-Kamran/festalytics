@@ -1,82 +1,37 @@
-import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
-
-const ADMIN_ROLES = new Set(["admin", "superadmin"]);
-
-function parseAllowlist(envValue) {
-  if (!envValue || typeof envValue !== "string") return new Set();
-  return new Set(
-    envValue
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean)
-  );
-}
-
-export function getAdminUidAllowlist() {
-  return parseAllowlist(process.env.ADMIN_UIDS);
-}
-
-export function getAdminEmailAllowlist() {
-  return parseAllowlist(process.env.ADMIN_EMAILS).map((e) => e.toLowerCase());
-}
-
-/**
- * @param {import("firebase-admin/auth").DecodedIdToken} decoded
- */
-export async function isPlatformAdmin(decoded) {
-  if (!decoded?.uid) return false;
-
-  const uidAllow = getAdminUidAllowlist();
-  if (uidAllow.has(decoded.uid)) return true;
-
-  const emailAllow = getAdminEmailAllowlist();
-  const email = (decoded.email || "").toLowerCase();
-  if (email && emailAllow.includes(email)) return true;
-
-  try {
-    const snap = await getAdminDb().collection("users").doc(decoded.uid).get();
-    const role = snap.exists ? snap.data()?.role : null;
-    if (ADMIN_ROLES.has(role)) return true;
-  } catch (err) {
-    console.warn("[isPlatformAdmin] users lookup failed:", err?.message);
-  }
-
-  return false;
-}
+import {
+  readCookie,
+  verifyAdminSessionToken,
+  ADMIN_SESSION_COOKIE,
+} from "@/lib/admin/session";
+import { getPlatformAdmin } from "@/lib/admin/platformAdminStore";
 
 /**
  * @param {Request} request
- * @returns {Promise<{ uid: string, email: string | undefined, token: import("firebase-admin/auth").DecodedIdToken }>}
  */
 export async function requireAdminFromRequest(request) {
-  const header = request.headers.get("authorization") || "";
-  const match = header.match(/^Bearer\s+(.+)$/i);
-  if (!match?.[1]) {
-    const err = new Error("Missing Authorization Bearer token.");
+  const cookieHeader = request.headers.get("cookie") || "";
+  const token = readCookie(cookieHeader, ADMIN_SESSION_COOKIE);
+  const session = verifyAdminSessionToken(token);
+
+  if (!session?.username) {
+    const err = new Error("Not authenticated. Sign in at /admin/login.");
     err.status = 401;
     throw err;
   }
 
-  let decoded;
+  let profile = null;
   try {
-    decoded = await getAdminAuth().verifyIdToken(match[1]);
-  } catch {
-    const err = new Error("Invalid or expired session token.");
-    err.status = 401;
-    throw err;
-  }
-
-  const allowed = await isPlatformAdmin(decoded);
-  if (!allowed) {
-    const err = new Error("Admin access denied.");
-    err.status = 403;
-    throw err;
+    profile = await getPlatformAdmin(session.username);
+  } catch (err) {
+    console.warn("[requireAdminFromRequest] platform_admins lookup:", err?.message);
   }
 
   return {
-    uid: decoded.uid,
-    email: decoded.email,
-    token: decoded,
+    uid: profile?.id ? `platform_admin:${profile.id}` : `platform_admin:${session.username}`,
+    username: session.username,
+    email: profile?.email || null,
+    profile,
+    session,
   };
 }
 

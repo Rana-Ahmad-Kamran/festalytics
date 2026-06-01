@@ -2,20 +2,19 @@
 
 import React, { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth } from "@/firebase";
-import { adminFetch } from "@/hooks/useAdminApi";
 import AdminGuard from "@/components/admin/AdminGuard";
 
 export default function AdminLoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const accessError = searchParams.get("error") === "access";
+  const sessionError = searchParams.get("error") === "session";
 
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(accessError ? "Your account is not authorized for admin access." : "");
+  const [error, setError] = useState(
+    sessionError ? "Your session expired. Sign in again." : ""
+  );
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -23,8 +22,18 @@ export default function AdminLoginPage() {
     setError("");
 
     try {
-      await signInWithEmailAndPassword(auth, email.trim(), password);
-      await adminFetch("/api/admin/me");
+      const res = await fetch("/api/admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ username: username.trim(), password }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || "Login failed.");
+      }
+
       router.push("/admin/dashboard");
     } catch (err) {
       setError(err.message || "Login failed.");
@@ -42,7 +51,7 @@ export default function AdminLoginPage() {
               A
             </div>
             <h1 className="text-2xl font-black text-white">Admin Panel</h1>
-            <p className="text-sm text-slate-400 mt-1">Festalytics platform operations</p>
+            <p className="text-sm text-slate-400 mt-1">Platform operator access only</p>
           </div>
 
           {error && (
@@ -54,13 +63,14 @@ export default function AdminLoginPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-bold uppercase tracking-widest text-slate-400 mb-1">
-                Email
+                Username
               </label>
               <input
-                type="email"
+                type="text"
                 required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 className="w-full rounded-xl bg-slate-950 border border-slate-700 px-4 py-3 text-white outline-none focus:border-rose-500"
               />
             </div>
@@ -71,6 +81,7 @@ export default function AdminLoginPage() {
               <input
                 type="password"
                 required
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full rounded-xl bg-slate-950 border border-slate-700 px-4 py-3 text-white outline-none focus:border-rose-500"
@@ -86,9 +97,9 @@ export default function AdminLoginPage() {
           </form>
 
           <p className="text-[11px] text-slate-500 mt-6 text-center leading-relaxed">
-            Access requires <code className="text-slate-400">ADMIN_EMAILS</code> or{" "}
-            <code className="text-slate-400">ADMIN_UIDS</code> in server env, or{" "}
-            <code className="text-slate-400">role: admin</code> on your user document.
+            Credentials are set in server <code className="text-slate-400">.env.local</code> only.
+            No public signup. Your profile is stored in Firestore{" "}
+            <code className="text-slate-400">platform_admins</code> on login.
           </p>
         </div>
       </div>

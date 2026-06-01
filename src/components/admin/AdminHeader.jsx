@@ -2,22 +2,24 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { onAuthStateChanged, signOut } from "firebase/auth";
-import { auth } from "@/firebase";
+import { adminFetch } from "@/hooks/useAdminApi";
 
 export default function AdminHeader({ title, subtitle }) {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      setEmail(user?.email || "");
-    });
-    return () => unsub();
+    adminFetch("/api/admin/me")
+      .then((data) => setUsername(data.username || data.email || "Admin"))
+      .catch(() => setUsername("Admin"));
   }, []);
 
   const logout = async () => {
-    await signOut(auth);
+    try {
+      await adminFetch("/api/admin/logout", { method: "POST" });
+    } catch {
+      /* clear cookie best-effort */
+    }
     router.push("/admin/login");
   };
 
@@ -28,7 +30,7 @@ export default function AdminHeader({ title, subtitle }) {
         {subtitle && <p className="text-xs text-slate-400">{subtitle}</p>}
       </div>
       <div className="flex items-center gap-4">
-        <span className="text-xs text-slate-400 hidden sm:block">{email}</span>
+        <span className="text-xs text-slate-400 hidden sm:block">{username}</span>
         <button
           type="button"
           onClick={logout}

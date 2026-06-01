@@ -8,24 +8,28 @@ export default function AdminSettingsPage() {
     <AdminShell title="Settings" subtitle="Admin access configuration">
       <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-6 max-w-2xl space-y-4 text-sm text-slate-300">
         <h2 className="text-xs font-black uppercase tracking-widest text-slate-400">
-          Server environment
+          Env-only login (Option A)
         </h2>
         <p>
-          Grant admin access by setting one or more of these in{" "}
-          <code className="text-rose-300">.env.local</code>:
+          Set these in <code className="text-rose-300">.env.local</code> and restart{" "}
+          <code className="text-slate-400">npm run dev</code>:
         </p>
         <ul className="list-disc pl-5 space-y-2 font-mono text-xs text-slate-400">
-          <li>ADMIN_EMAILS=you@example.com</li>
-          <li>ADMIN_UIDS=firebase_auth_uid</li>
-          <li>Or set users/&#123;uid&#125;.role to &quot;admin&quot; in Firestore</li>
+          <li>ADMIN_USERNAME=your_admin_username</li>
+          <li>ADMIN_PASSWORD=your_strong_password</li>
+          <li>ADMIN_SESSION_SECRET=long_random_string</li>
+          <li>ADMIN_EMAIL=optional@email.com (stored in Firestore profile only)</li>
         </ul>
         <p className="text-slate-500">
-          Firebase Admin SDK vars (FIREBASE_ADMIN_PROJECT_ID, FIREBASE_ADMIN_CLIENT_EMAIL,
-          FIREBASE_ADMIN_PRIVATE_KEY) must be set for all admin API routes.
+          Passwords are <strong className="text-slate-300">never</strong> saved in Firestore.
+          On each login, a record is upserted in{" "}
+          <code className="text-slate-400">platform_admins</code> with username, email, and
+          lastLoginAt.
         </p>
         <p className="text-slate-500">
-          Audit trail writes to <code className="text-slate-400">admin_audit_logs</code> on
-          mutations.
+          Session uses an httpOnly cookie (<code className="text-slate-400">festalytics_admin_session</code>
+          ), 12-hour lifetime. Mutations are logged to{" "}
+          <code className="text-slate-400">admin_audit_logs</code>.
         </p>
       </div>
     </AdminShell>

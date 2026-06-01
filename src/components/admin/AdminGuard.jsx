@@ -2,8 +2,6 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "@/firebase";
 import { adminFetch } from "@/hooks/useAdminApi";
 
 export default function AdminGuard({ children }) {
@@ -14,33 +12,25 @@ export default function AdminGuard({ children }) {
   useEffect(() => {
     const isLogin = pathname === "/admin/login";
 
-    const unsub = onAuthStateChanged(auth, async (user) => {
-      if (!user) {
-        setState(isLogin ? "ok" : "denied");
-        if (!isLogin) router.replace("/admin/login");
-        return;
-      }
-
-      if (isLogin) {
-        try {
-          await adminFetch("/api/admin/me");
-          router.replace("/admin/dashboard");
-        } catch {
-          setState("ok");
-        }
-        return;
-      }
-
+    const checkSession = async () => {
       try {
         await adminFetch("/api/admin/me");
+        if (isLogin) {
+          router.replace("/admin/dashboard");
+          return;
+        }
         setState("ok");
       } catch {
-        setState("denied");
-        router.replace("/admin/login?error=access");
+        if (isLogin) {
+          setState("ok");
+        } else {
+          setState("denied");
+          router.replace("/admin/login?error=session");
+        }
       }
-    });
+    };
 
-    return () => unsub();
+    checkSession();
   }, [pathname, router]);
 
   if (state === "loading" && pathname !== "/admin/login") {

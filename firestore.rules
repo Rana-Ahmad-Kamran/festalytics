@@ -157,6 +157,14 @@ service cloud.firestore {
       );
     }
 
+    match /platform_admins/{adminId} {
+      allow read, write: if false;
+    }
+
+    match /admin_audit_logs/{logId} {
+      allow read, write: if false;
+    }
+
     match /chats/{chatId} {
       allow read: if canReadChat(chatId);
 
