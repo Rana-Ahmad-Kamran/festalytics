@@ -24,7 +24,7 @@ export default function AdminHeader({ title, subtitle }) {
   };
 
   return (
-    <header className="fixed top-0 right-0 left-[260px] z-50 h-16 flex items-center justify-between px-8 bg-slate-950/90 backdrop-blur border-b border-slate-800">
+    <header className="fixed top-0 right-0 left-[260px] z-50 h-16 flex items-center justify-between px-8 bg-[#0c1222]/95 backdrop-blur-md border-b border-slate-800/80">
       <div>
         <h1 className="text-lg font-black text-white">{title}</h1>
         {subtitle && <p className="text-xs text-slate-400">{subtitle}</p>}

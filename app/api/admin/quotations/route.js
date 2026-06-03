@@ -6,10 +6,23 @@ import { QUOTATION_STATUS } from "@/lib/firestore/quotations";
 
 export const dynamic = "force-dynamic";
 
+function estimateAmount(data) {
+  const financials = Number(data.financials?.grandTotal);
+  if (Number.isFinite(financials) && financials > 0) return financials;
+
+  const menu = data.selectedMenu;
+  const perPlate =
+    typeof menu === "object" ? Number(menu?.perPlatePrice) || 0 : 0;
+  const guests = Number(data.guestCount) || 0;
+  if (perPlate > 0 && guests > 0) return perPlate * guests;
+  return 0;
+}
+
 function serializeQuotation(id, data) {
   const menu = data.selectedMenu;
   const packageName =
     typeof menu === "object" ? menu?.packageName || menu?.name || "—" : String(menu || "—");
+  const amount = estimateAmount(data);
 
   return {
     id,
@@ -21,6 +34,7 @@ function serializeQuotation(id, data) {
     guestCount: data.guestCount ?? null,
     status: data.status || "",
     packageName,
+    amount,
     eventTitle: data.eventTitle || "",
     timestamp: data.timestamp || null,
     updatedAt: data.updatedAt || null,
@@ -31,12 +45,61 @@ export const GET = withAdmin(async ({ request }) => {
   const { searchParams } = new URL(request.url);
   const status = searchParams.get("status") || "";
   const venueId = searchParams.get("venueId") || "";
+  const q = (searchParams.get("q") || "").trim().toLowerCase();
 
   const snap = await getAdminDb().collection("quotations").get();
-  let items = snap.docs.map((d) => serializeQuotation(d.id, d.data()));
+  const allItems = snap.docs.map((d) => serializeQuotation(d.id, d.data()));
 
-  if (status) items = items.filter((q) => q.status === status);
-  if (venueId) items = items.filter((q) => q.targetVenueId === venueId);
+  const pendingCount = allItems.filter(
+    (x) => x.status === QUOTATION_STATUS.PENDING
+  ).length;
+  const confirmed = allItems.filter((x) => x.status === QUOTATION_STATUS.CONFIRMED);
+  const confirmedAmounts = confirmed.map((x) => x.amount).filter((a) => a > 0);
+  const avgDealValue =
+    confirmedAmounts.length > 0
+      ? Math.round(
+          confirmedAmounts.reduce((s, a) => s + a, 0) / confirmedAmounts.length
+        )
+      : 0;
+  const conversionRate =
+    allItems.length > 0
+      ? Math.round((confirmed.length / allItems.length) * 1000) / 10
+      : 0;
+
+  const venueStats = {};
+  for (const item of allItems) {
+    const slug = item.targetVenueId || "unknown";
+    if (!venueStats[slug]) {
+      venueStats[slug] = { slug, total: 0, confirmed: 0 };
+    }
+    venueStats[slug].total += 1;
+    if (item.status === QUOTATION_STATUS.CONFIRMED) venueStats[slug].confirmed += 1;
+  }
+  const venuePerformance = Object.values(venueStats)
+    .map((v) => ({
+      slug: v.slug,
+      rate: v.total > 0 ? Math.round((v.confirmed / v.total) * 100) : 0,
+      total: v.total,
+    }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 6);
+
+  const venueSlugs = [...new Set(allItems.map((x) => x.targetVenueId).filter(Boolean))].sort();
+
+  let items = allItems;
+
+  if (status) items = items.filter((x) => x.status === status);
+  if (venueId) items = items.filter((x) => x.targetVenueId === venueId);
+  if (q) {
+    items = items.filter(
+      (x) =>
+        x.id.toLowerCase().includes(q) ||
+        x.quotationId.toLowerCase().includes(q) ||
+        x.customerName.toLowerCase().includes(q) ||
+        x.targetVenueId.toLowerCase().includes(q) ||
+        x.packageName.toLowerCase().includes(q)
+    );
+  }
 
   items.sort((a, b) => {
     const ta = a.timestamp?._seconds || 0;
@@ -44,7 +107,19 @@ export const GET = withAdmin(async ({ request }) => {
     return tb - ta;
   });
 
-  return Response.json({ quotations: items, total: items.length });
+  return Response.json({
+    quotations: items,
+    total: items.length,
+    summary: {
+      pendingCount,
+      totalCount: allItems.length,
+      avgDealValue,
+      conversionRate,
+      confirmedCount: confirmed.length,
+    },
+    venueSlugs,
+    venuePerformance,
+  });
 });
 
 export const PATCH = withAdmin(async ({ request, admin }) => {

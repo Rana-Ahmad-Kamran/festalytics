@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { adminFetch } from "@/hooks/useAdminApi";
 
 const navItems = [
   { icon: "dashboard", label: "Dashboard", href: "/admin/dashboard" },
@@ -17,24 +18,36 @@ const navItems = [
 
 export default function AdminSidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+
+  const logout = async () => {
+    try {
+      await adminFetch("/api/admin/logout", { method: "POST" });
+    } catch {
+      /* ignore */
+    }
+    router.push("/admin/login");
+  };
 
   return (
-    <aside className="fixed left-0 top-0 bottom-0 w-[260px] z-[60] flex flex-col py-6 bg-slate-900 border-r border-slate-800 text-slate-100">
-      <div className="px-6 mb-10">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-rose-600 flex items-center justify-center font-black text-white">
-            A
+    <aside className="fixed left-0 top-0 bottom-0 w-[260px] z-[60] flex flex-col bg-[#0a0f1a] border-r border-slate-800/80 text-slate-100">
+      <div className="px-5 py-6 border-b border-slate-800/60">
+        <Link href="/admin/dashboard" className="flex items-center gap-3 group">
+          <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-rose-500 to-pink-600 flex items-center justify-center font-black text-white shadow-lg shadow-rose-500/20">
+            F
           </div>
           <div>
-            <h1 className="text-lg font-black tracking-tight">Festalytics</h1>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+            <h1 className="text-base font-black tracking-tight text-white group-hover:text-rose-200 transition-colors">
+              Festalytics
+            </h1>
+            <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-500">
               Admin Panel
             </p>
           </div>
-        </div>
+        </Link>
       </div>
 
-      <nav className="flex-1 px-3 space-y-1 overflow-y-auto">
+      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
         {navItems.map((item) => {
           const active =
             pathname === item.href ||
@@ -42,13 +55,18 @@ export default function AdminSidebar() {
           return (
             <Link key={item.href} href={item.href}>
               <div
-                className={`flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
+                className={`flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
                   active
-                    ? "bg-rose-600 text-white"
-                    : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                    ? "bg-gradient-to-r from-rose-600 to-pink-600 text-white shadow-md shadow-rose-500/25"
+                    : "text-slate-400 hover:bg-slate-800/60 hover:text-white"
                 }`}
               >
-                <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
+                <span
+                  className="material-symbols-outlined text-[20px]"
+                  style={{ fontVariationSettings: active ? "'FILL' 1" : "'FILL' 0" }}
+                >
+                  {item.icon}
+                </span>
                 {item.label}
               </div>
             </Link>
@@ -56,12 +74,20 @@ export default function AdminSidebar() {
         })}
       </nav>
 
-      <div className="px-6 pt-4 border-t border-slate-800">
+      <div className="p-3 border-t border-slate-800/60 space-y-2">
+        <button
+          type="button"
+          onClick={logout}
+          className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-400 border border-slate-800 hover:bg-slate-800/80 hover:text-white transition-colors"
+        >
+          <span className="material-symbols-outlined text-[20px]">logout</span>
+          Sign out
+        </button>
         <Link
           href="/"
-          className="text-xs font-semibold text-slate-400 hover:text-white transition-colors"
+          className="block text-center text-[11px] font-medium text-slate-600 hover:text-slate-400 py-1 transition-colors"
         >
-          ← Back to marketplace
+          ← Marketplace
         </Link>
       </div>
     </aside>

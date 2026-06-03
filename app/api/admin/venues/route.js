@@ -1,15 +1,23 @@
 import { withAdmin } from "@/lib/admin/apiRoute";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { writeAdminAuditLog } from "@/lib/admin/auditLog";
+import { resolveVenueImageUrl } from "@/lib/venueImagePath";
 
 export const dynamic = "force-dynamic";
 
 function serializeVenue(id, data) {
   const profile = data.profile || {};
+  const area = profile.area || data.city || "";
+  const address = profile.address || data.streetAddress || "";
+  const city = data.city || "Lahore";
+
   return {
     slug: id,
     name: data.name || data.hallName || profile.hall_name || id,
-    area: profile.area || data.city || "",
+    area,
+    address,
+    locationLabel: address ? `${city}, ${area}` : area || city,
+    imageUrl: resolveVenueImageUrl(id, data),
     serviceActive: data.serviceActive !== false,
     ownerId: data.ownerId || null,
     capacity: data.capacity ?? profile.capacity ?? null,

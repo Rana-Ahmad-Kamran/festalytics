@@ -4,10 +4,17 @@ import { getAdminDb } from "@/lib/firebase/admin";
 export const dynamic = "force-dynamic";
 
 function serializeUser(id, data) {
+  const firstName = data.firstName || "";
+  const lastName = data.lastName || "";
+  const fullName =
+    data.fullName || `${firstName} ${lastName}`.trim() || data.email?.split("@")[0] || "User";
+
   return {
     uid: id,
     email: data.email || "",
-    fullName: data.fullName || `${data.firstName || ""} ${data.lastName || ""}`.trim(),
+    firstName,
+    lastName,
+    fullName,
     role: data.role || "user",
     venueId: data.venueId || null,
     emailVerified: data.emailVerified === true,
@@ -24,7 +31,17 @@ export const GET = withAdmin(async ({ request }) => {
   const role = searchParams.get("role") || "";
 
   const snap = await getAdminDb().collection("users").get();
-  let items = snap.docs.map((d) => serializeUser(d.id, d.data()));
+  const allItems = snap.docs.map((d) => serializeUser(d.id, d.data()));
+
+  const summary = {
+    totalUsers: allItems.length,
+    vendorCount: allItems.filter((u) => u.role === "vendor").length,
+    activeVendors: allItems.filter((u) => u.role === "vendor" && u.venueId).length,
+    customerCount: allItems.filter((u) => u.role === "user").length,
+    adminCount: allItems.filter((u) => u.role === "admin").length,
+  };
+
+  let items = allItems;
 
   if (role) items = items.filter((u) => u.role === role);
   if (searchParams.get("stuck") === "1") {
@@ -47,5 +64,9 @@ export const GET = withAdmin(async ({ request }) => {
 
   items.sort((a, b) => (b.email || "").localeCompare(a.email || ""));
 
-  return Response.json({ users: items, total: items.length });
+  return Response.json({
+    users: items,
+    total: items.length,
+    summary,
+  });
 });
