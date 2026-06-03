@@ -37,6 +37,21 @@ function normalizeStatus(value) {
   return "Pending";
 }
 
+
+function extractUrlFromHyperlinkFormula(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const match = text.match(/^=?HYPERLINK\(\s*"([^"]+)"/i) || text.match(/^=?HYPERLINK\(\s*'([^']+)'/i);
+  return match ? match[1] : text;
+}
+
+function normalizeProofValue(value) {
+  const url = extractUrlFromHyperlinkFormula(value);
+  const lower = String(url || "").trim().toLowerCase();
+  if (["play", "play recording", "recording", "no proof", "not found"].includes(lower)) return "";
+  return url;
+}
+
 function makeAuth() {
   const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   const key = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n");
@@ -145,6 +160,7 @@ export async function POST(request) {
       const valuesRes = await sheets.spreadsheets.values.get({
         spreadsheetId,
         range: `${safeSheetName(title)}!A:ZZ`,
+        valueRenderOption: "FORMULA",
       });
       const rows = valuesRes.data.values || [];
       if (!rows.length) continue;

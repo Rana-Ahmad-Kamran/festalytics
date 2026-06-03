@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 from dataclasses import dataclass, asdict
 from typing import Any, Literal
@@ -10,6 +11,7 @@ from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 from twilio.jwt.access_token import AccessToken
 from twilio.jwt.access_token.grants import VoiceGrant
+from twilio.base.exceptions import TwilioRestException
 from twilio.rest import Client
 from twilio.twiml.voice_response import Gather, VoiceResponse
 
@@ -61,6 +63,36 @@ def _clean_booking_id(value: Any) -> str:
     text = str(value or "").strip()
     return text or "demo-booking"
 
+def _plain_text(value: Any, fallback: str = "") -> str:
+    """Convert Firestore timestamps, sheet objects, numbers, and invalid values into safe voice text."""
+    if value is None:
+        return fallback
+    if isinstance(value, (str, int, float, bool)):
+        text = str(value).strip()
+        return text or fallback
+    # Firestore Timestamp-like object from JS sometimes arrives as a dict.
+    if isinstance(value, dict):
+        for key in ("date", "value", "label", "text", "formatted", "display", "seconds", "_seconds"):
+            if key in value and value[key] is not None:
+                if key in ("seconds", "_seconds"):
+                    return "the selected event date"
+                return _plain_text(value[key], fallback)
+        return fallback
+    return fallback
+
+
+def _plain_int(value: Any, fallback: int = 0) -> int:
+    try:
+        if isinstance(value, dict):
+            for key in ("guests", "value", "count", "pax"):
+                if key in value:
+                    return _plain_int(value[key], fallback)
+            return fallback
+        text = str(value or "").replace(",", "").strip()
+        return int(float(text)) if text else fallback
+    except Exception:
+        return fallback
+
 
 def _state(booking_id: str | None = None) -> BookingState:
     global last_booking_id
@@ -100,16 +132,13 @@ def _state_dict(state: BookingState) -> dict[str, Any]:
 def set_booking(data: dict[str, Any]) -> dict[str, Any]:
     state = _state(data.get("bookingId") or data.get("booking_id"))
     state.booking_id = _clean_booking_id(data.get("bookingId") or data.get("booking_id") or state.booking_id)
-    state.customer_name = str(data.get("customerName") or data.get("customer_name") or state.customer_name)
-    state.hall_name = str(data.get("hallName") or data.get("hall_name") or state.hall_name)
-    try:
-        state.guests = int(data.get("guests") or state.guests or 0)
-    except Exception:
-        state.guests = 0
-    state.event_date = str(data.get("eventDate") or data.get("event_date") or state.event_date)
-    state.phone = str(data.get("phone") or data.get("customerPhone") or data.get("customer_phone") or state.phone or "")
-    state.status = str(data.get("status") or state.status or "pending").lower()
-    state.sheet_name = data.get("sheetName") or data.get("sheet_name") or state.sheet_name
+    state.customer_name = _plain_text(data.get("customerName") or data.get("customer_name"), state.customer_name or "Customer")
+    state.hall_name = _plain_text(data.get("hallName") or data.get("hall_name"), state.hall_name or "Selected Venue")
+    state.guests = _plain_int(data.get("guests"), state.guests or 0)
+    state.event_date = _plain_text(data.get("eventDate") or data.get("event_date"), state.event_date or "the selected event date")
+    state.phone = _plain_text(data.get("phone") or data.get("customerPhone") or data.get("customer_phone"), state.phone or "")
+    state.status = _plain_text(data.get("status"), state.status or "pending").lower()
+    state.sheet_name = _plain_text(data.get("sheetName") or data.get("sheet_name"), state.sheet_name or "") or None
     row_number = data.get("sheetRowNumber") or data.get("sheet_row_number") or state.sheet_row_number
     try:
         state.sheet_row_number = int(row_number) if row_number else None
@@ -168,17 +197,25 @@ def initiate_call(payload: dict[str, Any]) -> dict[str, Any]:
             raise HTTPException(status_code=400, detail="Customer phone number is required for phone-call mode.")
 
     encoded_booking_id = quote(state.booking_id, safe="")
-    call = _client().calls.create(
-        to=to_value,
-        from_=settings.twilio_phone_number,
-        url=f"{_base_url()}/api/twilio/twiml-greet?bookingId={encoded_booking_id}",
-        method="POST",
-        record=True,
-        recording_channels="dual",
-        recording_status_callback=f"{_base_url()}/api/twilio/recording-done?bookingId={encoded_booking_id}",
-        recording_status_callback_method="POST",
-        recording_status_callback_event=["completed"],
-    )
+    try:
+        call = _client().calls.create(
+            to=to_value,
+            from_=settings.twilio_phone_number,
+            url=f"{_base_url()}/api/twilio/twiml-greet?bookingId={encoded_booking_id}",
+            method="POST",
+            record=True,
+            recording_channels="dual",
+            recording_status_callback=f"{_base_url()}/api/twilio/recording-done?bookingId={encoded_booking_id}",
+            recording_status_callback_method="POST",
+            recording_status_callback_event=["completed"],
+        )
+    except TwilioRestException as exc:
+        detail = getattr(exc, "msg", None) or getattr(exc, "message", None) or str(exc)
+        code = getattr(exc, "code", None)
+        raise HTTPException(status_code=400, detail=f"Twilio could not start the browser call{f' (code {code})' if code else ''}: {detail}")
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Twilio could not start the browser call: {str(exc)}")
+
     state.call_sid = call.sid
     call_to_booking[call.sid] = state.booking_id
     return {"success": True, "callSid": call.sid, "mode": mode, "booking": _state_dict(state)}
@@ -320,11 +357,26 @@ async def recording_proxy(sid: str):
     url = f"https://api.twilio.com/2010-04-01/Accounts/{settings.twilio_account_sid}/Recordings/{sid}.mp3"
 
     async def iterator():
+        last_error = None
         async with httpx.AsyncClient(follow_redirects=True, timeout=None) as client:
-            async with client.stream("GET", url, headers={"Authorization": f"Basic {auth}"}) as response:
-                response.raise_for_status()
-                async for chunk in response.aiter_bytes():
-                    yield chunk
+            # Twilio sometimes calls the recording-completed webhook before the media file is immediately playable.
+            # Retrying here prevents the web portal from opening a temporary 404 page for fresh recordings.
+            for attempt in range(6):
+                try:
+                    async with client.stream("GET", url, headers={"Authorization": f"Basic {auth}"}) as response:
+                        if response.status_code == 404 and attempt < 5:
+                            await asyncio.sleep(2)
+                            continue
+                        response.raise_for_status()
+                        async for chunk in response.aiter_bytes():
+                            yield chunk
+                        return
+                except Exception as exc:
+                    last_error = exc
+                    if attempt < 5:
+                        await asyncio.sleep(2)
+                        continue
+                    raise last_error
 
     return StreamingResponse(iterator(), media_type="audio/mpeg")
 
