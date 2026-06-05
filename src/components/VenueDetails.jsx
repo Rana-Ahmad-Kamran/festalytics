@@ -20,31 +20,52 @@ import { usePublicVenueCalendar } from "@/hooks/usePublicVenueCalendar";
 import EventDatePicker from "@/components/EventDatePicker";
 import CustomerVenueChat from "@/components/chat/CustomerVenueChat";
 import VenueFaqSection from "@/components/venue/VenueFaqSection";
+import { getPublicVenueDocId } from "@/lib/publicVenues";
 
 const VenueDetails = () => {
-  const { id } = useParams();
+  const { id: rawId } = useParams();
+  const id = Array.isArray(rawId) ? rawId[0] : rawId;
   const router = useRouter();
   const { requireAuth, loadPendingAction } = useAuth();
   const [venue, setVenue] = useState(null);
+  const [venueLoading, setVenueLoading] = useState(true);
   const [activeImage, setActiveImage] = useState(0);
   const [rating, setRating] = useState('4.5');
 
   useEffect(() => {
+    if (!id) {
+      setVenueLoading(true);
+      return undefined;
+    }
+
+    let cancelled = false;
+
     const loadVenue = async () => {
-      const foundInJson = hallsData.find(
-        (h) =>
-          h.hall_id?.toString() === id ||
-          (h.hall_name && h.hall_name.toLowerCase().replace(/\s+/g, "-") === id?.toLowerCase())
-      );
+      setVenueLoading(true);
+      setVenue(null);
+
+      const normalizedId = decodeURIComponent(String(id)).toLowerCase();
+
+      const foundInJson = hallsData.find((h) => {
+        if (h.hall_id?.toString() === id) return true;
+        const nameSlug = h.hall_name?.toLowerCase().replace(/\s+/g, "-");
+        if (nameSlug === normalizedId) return true;
+        return getPublicVenueDocId(h) === id;
+      });
 
       if (foundInJson) {
-        setVenue(foundInJson);
+        if (!cancelled) {
+          setVenue(foundInJson);
+          setVenueLoading(false);
+        }
         return;
       }
 
       try {
         const docRef = doc(db, "venues", id);
         const docSnap = await getDoc(docRef);
+        if (cancelled) return;
+
         if (docSnap.exists()) {
           const data = docSnap.data();
           const profile = data.profile || {};
@@ -62,7 +83,7 @@ const VenueDetails = () => {
             one_dish_chicken: String(data.pricing?.chickenPrice || 2000),
             one_dish_beef: String(data.pricing?.beefPrice || 2850),
             one_dish_mutton: String(data.pricing?.muttonPrice || 4100),
-            images: (data.images || []).map((img, idx) =>
+            images: (data.images || []).map((img) =>
               typeof img === "string"
                 ? img
                 : img?.url || "https://images.unsplash.com/photo-1519167758481-83f550bb49b3?w=800&q=80"
@@ -79,11 +100,16 @@ const VenueDetails = () => {
         }
       } catch (err) {
         console.error("Error loading Firestore-only venue:", err);
-        setVenue(null);
+        if (!cancelled) setVenue(null);
+      } finally {
+        if (!cancelled) setVenueLoading(false);
       }
     };
 
-    if (id) loadVenue();
+    loadVenue();
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   useEffect(() => {
@@ -308,14 +334,36 @@ const VenueDetails = () => {
     if (p.includeSecurity != null) setIncludeSecurity(p.includeSecurity);
   }, [venue, loadPendingAction]);
 
+  if (venueLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <PublicSiteHeader />
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="text-center">
+            <span className="inline-block w-10 h-10 border-4 border-[#D6336C] border-t-transparent rounded-full animate-spin mb-4" />
+            <p className="text-gray-600 font-medium">Loading venue details…</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!venue) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Venue not found</h2>
-          <button onClick={() => router.back()} className="text-[#D6336C] font-semibold hover:underline">
-            Go back
-          </button>
+      <div className="min-h-screen bg-gray-50">
+        <PublicSiteHeader />
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="text-center">
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Venue not found</h2>
+            <p className="text-gray-500 mb-4 text-sm">This venue may have been removed or the link is incorrect.</p>
+            <button
+              type="button"
+              onClick={() => router.push("/all-venues")}
+              className="text-[#D6336C] font-semibold hover:underline"
+            >
+              Browse all venues
+            </button>
+          </div>
         </div>
       </div>
     );

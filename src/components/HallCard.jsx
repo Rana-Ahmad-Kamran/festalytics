@@ -4,7 +4,7 @@ import React from 'react';
 import { useRouter } from 'next/navigation';
 import { Star, MapPin } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { formatVenuePriceRange } from '@/lib/publicVenues';
+import { formatVenuePriceRange, getPublicVenueDocId } from '@/lib/publicVenues';
 
 const HallCard = ({ venue, index, imagePath }) => {
   const router = useRouter();
@@ -18,11 +18,9 @@ const HallCard = ({ venue, index, imagePath }) => {
   const priceLabel = formatVenuePriceRange(venue);
 
   const handleCardClick = () => {
-    const slug =
-      venue.isFromDb && venue.hall_id
-        ? venue.hall_id
-        : venue.hall_id?.toString() || venue.hall_name?.toLowerCase().replace(/\s+/g, '-');
-    router.push(`/venue/${slug}`);
+    const slug = getPublicVenueDocId(venue);
+    if (!slug) return;
+    router.push(`/venue/${encodeURIComponent(slug)}`);
   };
 
   return (

@@ -10,6 +10,7 @@ import {
   getDoc,
 } from "firebase/firestore";
 import { db } from "@/firebase";
+import { normalizeBookingEventDate } from "@/lib/bookings/bookingListUtils";
 
 const QUOTATIONS_COLLECTION = "quotations";
 export const QUOTATION_STATUS = {
@@ -272,7 +273,7 @@ export function mapQuotationToBookingRow(quotation) {
     },
     service: packageName,
     bookedDate: "Today",
-    eventDate: quotation.eventDate || "",
+    eventDate: normalizeBookingEventDate(quotation.eventDate || ""),
     timing: quotation.eventTime || "",
     status: isConfirmed ? "Confirmed / Scheduled" : uiStatus,
     source: "Online Portal",

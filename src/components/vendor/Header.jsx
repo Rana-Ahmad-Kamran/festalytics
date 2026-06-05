@@ -4,10 +4,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { db, auth } from "@/firebase";
 import { doc, getDoc } from "firebase/firestore";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
+import { useVendorSearch } from '@/contexts/VendorSearchContext';
 
 const Header = () => {
     const router = useRouter();
+    const pathname = usePathname();
+    const { globalSearch, setGlobalSearch } = useVendorSearch();
     const [vendorName, setVendorName] = useState("Alex Rivera");
     const [showDropdown, setShowDropdown] = useState(false);
 
@@ -51,10 +54,20 @@ const Header = () => {
             <div className="flex items-center flex-1 max-w-xl">
                 <div className="relative w-full">
                     <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-primary">search</span>
-                    <input 
-                        className="w-full h-12 pl-12 pr-6 bg-surface-container-low border-2 border-outline-variant rounded-full focus:ring-4 focus:ring-primary/20 focus:border-primary outline-none transition-all" 
-                        placeholder="Search analytics, bookings..." 
-                        type="text"
+                    <input
+                        className="w-full h-12 pl-12 pr-6 bg-surface-container-low border-2 border-outline-variant rounded-full focus:ring-4 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+                        placeholder="Search analytics, bookings..."
+                        type="search"
+                        value={globalSearch}
+                        onChange={(e) => setGlobalSearch(e.target.value)}
+                        aria-label="Search bookings and analytics"
+                        onKeyDown={(e) => {
+                            if (e.key !== "Enter") return;
+                            const q = globalSearch.trim();
+                            if (pathname === "/vendor-dashboard/bookings") return;
+                            const params = q ? `?search=${encodeURIComponent(q)}` : "";
+                            router.push(`/vendor-dashboard/bookings${params}`);
+                        }}
                     />
                 </div>
             </div>

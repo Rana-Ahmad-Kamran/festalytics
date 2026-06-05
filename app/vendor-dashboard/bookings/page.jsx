@@ -1,12 +1,16 @@
 "use client";
 import React, { useState, useEffect, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { db } from "@/firebase";
 import { doc, getDoc, updateDoc, arrayUnion, collection, getDocs, query, where } from "firebase/firestore";
 import { useVendorVenue } from "@/hooks/useVendorVenue";
 import BookingStats from '@/components/vendor/bookings/BookingStats';
 import BookingFilters from '@/components/vendor/bookings/BookingFilters';
+import BookingsCalendarView from '@/components/vendor/bookings/BookingsCalendarView';
+import BookingsCardsView from '@/components/vendor/bookings/BookingsCardsView';
+import { filterAndSortBookings, normalizeBookingEventDate, dedupeMergedBookings } from '@/lib/bookings/bookingListUtils';
+import { useVendorSearch } from '@/contexts/VendorSearchContext';
 import {
     listenToVenueQuotations,
     mapQuotationToBookingRow,
@@ -176,7 +180,9 @@ function mapSheetBookingToRow(b, venueId) {
     const name = b.customer?.name || getColumnByAliases(columns, ["Customer", "Customer Name", "Client", "Client Name", "Name", "Full Name"], "Client");
     const contact = b.customer?.contact || b.customer?.email || getColumnByAliases(columns, ["Contact", "Phone", "Phone Number", "Mobile", "Customer Contact", "Number", "Email"], "No Contact");
     const category = b.eventDetails?.category || getColumnByAliases(columns, ["Service", "Event", "Event Type", "Category", "Event Category"], "Wedding Event");
-    const eventDate = b.eventDetails?.date || getColumnByAliases(columns, ["Event Date", "Date", "Function Date", "Booking Date"], "");
+    const eventDate = normalizeBookingEventDate(
+        b.eventDetails?.date || getColumnByAliases(columns, ["Event Date", "Date", "Function Date", "Booking Date"], "")
+    );
     const timing = b.eventDetails?.timing || getColumnByAliases(columns, ["Timing", "Slot", "Event Timing", "Time"], "");
     const status = normalizeSheetStatus(b.status || getColumnByAliases(columns, ["Status", "Call Status", "Confirmation Status"], "Pending"));
     const amountValue = b.financials?.grandTotal || b.amount || getColumnByAliases(columns, ["Amount", "Grand Total", "Total", "Total Amount", "Price", "Package Amount"], 0);
@@ -371,19 +377,41 @@ function normalizeSheetStatus(status) {
     return "Pending";
 }
 
+/** Stable unique key for merge + React lists (avoids duplicate BK-xxxx warnings). */
+function bookingRowKey(row, fallbackIdx) {
+    if (!row) return `row-${fallbackIdx ?? 0}`;
+    const docId = String(row.docId || "").trim();
+    if (docId) return docId;
+    if (row.sheetName != null && row.rowNumber != null) {
+        return `sheet:${row.sheetName}:${row.rowNumber}`;
+    }
+    const displayId = String(row.id || "").trim();
+    if (displayId) return `id:${displayId}`;
+    return `row-${fallbackIdx ?? 0}`;
+}
+
 function mergeBookingRows(...lists) {
     const byKey = new Map();
+    let idx = 0;
     for (const list of lists) {
         for (const row of list) {
-            byKey.set(row.docId || row.id, row);
+            byKey.set(bookingRowKey(row, idx++), row);
         }
     }
     return Array.from(byKey.values());
 }
 
+const VIEW_MODE_STORAGE_KEY = "vendor_bookings_view_mode";
+
 const BookingsPage = () => {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const { globalSearch, setGlobalSearch } = useVendorSearch();
+    const [searchQuery, setSearchQuery] = useState("");
     const [showWalkinForm, setShowWalkinForm] = useState(false);
+    const [statusFilter, setStatusFilter] = useState("All Status");
+    const [timeFilter, setTimeFilter] = useState("All Time");
+    const [viewMode, setViewMode] = useState("table");
     const { venueId, isLoading: venueLoading } = useVendorVenue();
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
@@ -1206,13 +1234,69 @@ const syncProofToGoogleSheet = async ({ bookingId, proofUrl, status, callSid, sh
         }
     };
 
-    const venueBookings = mergeBookingRows(firestoreBookings, legacyBookings, sheetBookings);
-    const allBookings = mergeBookingRows(quotationBookings, firestoreBookings, legacyBookings, sheetBookings);
+    const venueBookings = useMemo(
+        () => dedupeMergedBookings(mergeBookingRows(firestoreBookings, legacyBookings, sheetBookings)),
+        [firestoreBookings, legacyBookings, sheetBookings]
+    );
+
+    const allBookings = useMemo(
+        () =>
+            dedupeMergedBookings(
+                mergeBookingRows(quotationBookings, firestoreBookings, legacyBookings, sheetBookings)
+            ),
+        [quotationBookings, firestoreBookings, legacyBookings, sheetBookings]
+    );
+
+    const filteredBookings = useMemo(
+        () =>
+            filterAndSortBookings(allBookings, {
+                search: searchQuery,
+                status: statusFilter,
+                time: timeFilter,
+            }),
+        [allBookings, searchQuery, statusFilter, timeFilter]
+    );
+
+    const handleSearchChange = (value) => {
+        setSearchQuery(value);
+        setGlobalSearch(value);
+    };
+
+    useEffect(() => {
+        setSearchQuery(globalSearch);
+    }, [globalSearch]);
+
+    const urlSearchParam = searchParams.get("search") || "";
+    useEffect(() => {
+        if (urlSearchParam) {
+            setSearchQuery(urlSearchParam);
+            setGlobalSearch(urlSearchParam);
+        }
+    }, [urlSearchParam, setGlobalSearch]);
+
+    useEffect(() => {
+        try {
+            const saved = sessionStorage.getItem(VIEW_MODE_STORAGE_KEY);
+            if (saved === "table" || saved === "calendar" || saved === "grid") {
+                setViewMode(saved);
+            }
+        } catch {
+            /* ignore */
+        }
+    }, []);
+
+    useEffect(() => {
+        try {
+            sessionStorage.setItem(VIEW_MODE_STORAGE_KEY, viewMode);
+        } catch {
+            /* ignore */
+        }
+    }, [viewMode]);
 
     useEffect(() => {
         if (!selectedDetailBooking) return;
-        const currentKey = selectedDetailBooking.docId || selectedDetailBooking.id;
-        const updated = allBookings.find((booking) => (booking.docId || booking.id) === currentKey);
+        const currentKey = bookingRowKey(selectedDetailBooking);
+        const updated = allBookings.find((booking) => bookingRowKey(booking) === currentKey);
         if (updated) {
             setSelectedDetailBooking(updated);
         }
@@ -1295,7 +1379,7 @@ const syncProofToGoogleSheet = async ({ bookingId, proofUrl, status, callSid, sh
         }
 
         setIsSaving(true);
-        const bookingId = `BK-${Math.floor(1000 + Math.random() * 9000)}`;
+        const bookingId = `BK-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
         const bookingPayload = {
             id: bookingId,
@@ -1612,10 +1696,39 @@ const syncProofToGoogleSheet = async ({ bookingId, proofUrl, status, callSid, sh
 
                         {/* Booking Filters */}
                         <section className="space-y-6">
-                            <BookingFilters onNewBooking={() => setShowWalkinForm(true)} />
-                            
-                            {/* Live Google Sheet and Firestore Bookings Table */}
+                            <BookingFilters
+                                onNewBooking={() => setShowWalkinForm(true)}
+                                search={searchQuery}
+                                onSearchChange={handleSearchChange}
+                                statusFilter={statusFilter}
+                                onStatusFilterChange={setStatusFilter}
+                                timeFilter={timeFilter}
+                                onTimeFilterChange={setTimeFilter}
+                                viewMode={viewMode}
+                                onViewModeChange={setViewMode}
+                                resultCount={filteredBookings.length}
+                            />
+
                             <div className="bg-white rounded-[2.5rem] shadow-xl overflow-hidden border border-outline-variant">
+                            {viewMode === "calendar" ? (
+                                <BookingsCalendarView
+                                    bookings={filteredBookings}
+                                    bookingRowKey={bookingRowKey}
+                                    onSelect={(booking) => {
+                                        setSelectedDetailBooking(booking);
+                                        setCounterOfferAmount(booking.amount);
+                                    }}
+                                />
+                            ) : viewMode === "grid" ? (
+                                <BookingsCardsView
+                                    bookings={filteredBookings}
+                                    bookingRowKey={bookingRowKey}
+                                    onSelect={(booking) => {
+                                        setSelectedDetailBooking(booking);
+                                        setCounterOfferAmount(booking.amount);
+                                    }}
+                                />
+                            ) : (
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-left border-collapse">
                                         <thead className="bg-surface-variant/30 border-b border-outline-variant">
@@ -1645,9 +1758,15 @@ const syncProofToGoogleSheet = async ({ bookingId, proofUrl, status, callSid, sh
                                                         No bookings or quotation requests yet.
                                                     </td>
                                                 </tr>
-                                            ) : allBookings.map((booking, idx) => (
+                                            ) : filteredBookings.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan="9" className="p-12 text-center text-outline font-bold uppercase tracking-widest text-xs">
+                                                        No bookings match your search or filters.
+                                                    </td>
+                                                </tr>
+                                            ) : filteredBookings.map((booking, idx) => (
                                                 <motion.tr 
-                                                    key={booking.id || idx}
+                                                    key={bookingRowKey(booking, idx)}
                                                     initial={{ opacity: 0, x: -10 }}
                                                     animate={{ opacity: 1, x: 0 }}
                                                     transition={{ delay: idx * 0.04 }}
@@ -1761,6 +1880,7 @@ const syncProofToGoogleSheet = async ({ bookingId, proofUrl, status, callSid, sh
                                         </tbody>
                                     </table>
                                 </div>
+                            )}
                             </div>
                         </section>
                     </motion.div>

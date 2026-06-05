@@ -8,6 +8,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "@/firebase";
+import { normalizeBookingEventDate } from "@/lib/bookings/bookingListUtils";
 
 const BOOKINGS_COLLECTION = "bookings";
 
@@ -37,7 +38,7 @@ export function mapBookingDocToRow(docId, data) {
     },
     service: data.eventDetails?.category || "Wedding Event",
     bookedDate: data.bookedDate || "Today",
-    eventDate: data.eventDetails?.date || "",
+    eventDate: normalizeBookingEventDate(data.eventDetails?.date || ""),
     timing: data.eventDetails?.timing || "",
     status: data.status || "Confirmed",
     source,

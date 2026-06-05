@@ -1,15 +1,19 @@
 "use client";
 
-import React, { createContext, useContext, useState, useMemo } from "react";
+import React, { createContext, useContext, useState, useCallback, useMemo } from "react";
 
 const VendorSearchContext = createContext(null);
 
 export function VendorSearchProvider({ children }) {
-  const [globalSearch, setGlobalSearch] = useState("");
+  const [globalSearch, setGlobalSearchState] = useState("");
+
+  const setGlobalSearch = useCallback((value) => {
+    setGlobalSearchState(typeof value === "function" ? value : String(value ?? ""));
+  }, []);
 
   const value = useMemo(
     () => ({ globalSearch, setGlobalSearch }),
-    [globalSearch]
+    [globalSearch, setGlobalSearch]
   );
 
   return (
