@@ -6,6 +6,51 @@ function normalizeText(value) {
     .trim();
 }
 
+/** Coerce any booking source field to a display label (always a string). */
+export function formatBookingSourceLabel(bookingOrSource) {
+  const isRow =
+    bookingOrSource &&
+    typeof bookingOrSource === "object" &&
+    ("source" in bookingOrSource ||
+      "bookingSource" in bookingOrSource ||
+      "isWalkIn" in bookingOrSource ||
+      "isQuotation" in bookingOrSource);
+
+  const row = isRow ? bookingOrSource : null;
+  let raw = isRow
+    ? row.source ??
+      row.bookingSource ??
+      row.raw?.bookingSource ??
+      row.raw?.eventDetails?.source
+    : bookingOrSource;
+
+  if (raw && typeof raw === "object") {
+    raw = raw.label || raw.name || raw.type || raw.value || "";
+  }
+
+  const text = String(raw ?? "").trim();
+  const lower = text.toLowerCase();
+
+  if (row?.isWalkIn || lower === "walk-in" || lower.includes("walk")) {
+    return "Walk-in ERP";
+  }
+  if (
+    row?.isQuotation ||
+    lower === "online" ||
+    lower.includes("portal") ||
+    lower.includes("quotation") ||
+    lower === "web"
+  ) {
+    return "Online Portal";
+  }
+  if (!text) return "Online Portal";
+  return text;
+}
+
+export function isWalkInBookingSource(bookingOrSource) {
+  return formatBookingSourceLabel(bookingOrSource).toLowerCase().includes("walk");
+}
+
 /** Excel serial (e.g. 46176) → Date (Windows 1900 epoch). */
 export function excelSerialToDate(serial) {
   const n = Number(serial);
@@ -240,8 +285,18 @@ function mergeBookingPair(primary, secondary) {
     sheetName: primary?.sheetName || secondary?.sheetName,
     sheetRowNumber: primary?.sheetRowNumber || secondary?.sheetRowNumber,
     sheetColumns: primary?.sheetColumns || secondary?.sheetColumns,
-    source: hasSheetAnchor(primary) || hasSheetAnchor(secondary) ? "Online Portal" : (primary?.source || secondary?.source),
-    bookingSource: hasSheetAnchor(primary) || hasSheetAnchor(secondary) ? "online" : (primary?.bookingSource || secondary?.bookingSource),
+    source: formatBookingSourceLabel({
+      ...secondary,
+      ...primary,
+      isWalkIn: Boolean(primary?.isWalkIn || secondary?.isWalkIn),
+      isQuotation: Boolean(primary?.isQuotation || secondary?.isQuotation),
+    }),
+    bookingSource:
+      primary?.isWalkIn || secondary?.isWalkIn
+        ? "walk-in"
+        : hasSheetAnchor(primary) || hasSheetAnchor(secondary) || primary?.isQuotation || secondary?.isQuotation
+          ? "online"
+          : String(primary?.bookingSource || secondary?.bookingSource || "online"),
     isQuotation: Boolean(primary?.isQuotation || secondary?.isQuotation),
     quotationDocId,
     raw: { ...secondary?.raw, ...primary?.raw, quotationId: quotationDocId || primary?.raw?.quotationId },

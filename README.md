@@ -9,6 +9,7 @@ Wedding and event planning platform with three surfaces:
 ## Documentation
 
 - **[Architecture guide](docs/ARCHITECTURE.md)** — routes, auth, Firestore model, API map
+- **[Deployment plan](docs/DEPLOYMENT.md)** — hosting strategy, env vars, MVP checklist (for senior dev review)
 
 ## Quick start
 

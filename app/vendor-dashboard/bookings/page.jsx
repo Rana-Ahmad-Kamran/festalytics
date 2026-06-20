@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { db } from "@/firebase";
@@ -9,7 +9,13 @@ import BookingStats from '@/components/vendor/bookings/BookingStats';
 import BookingFilters from '@/components/vendor/bookings/BookingFilters';
 import BookingsCalendarView from '@/components/vendor/bookings/BookingsCalendarView';
 import BookingsCardsView from '@/components/vendor/bookings/BookingsCardsView';
-import { filterAndSortBookings, normalizeBookingEventDate, dedupeMergedBookings } from '@/lib/bookings/bookingListUtils';
+import {
+    filterAndSortBookings,
+    normalizeBookingEventDate,
+    dedupeMergedBookings,
+    formatBookingSourceLabel,
+    isWalkInBookingSource,
+} from '@/lib/bookings/bookingListUtils';
 import { useVendorSearch } from '@/contexts/VendorSearchContext';
 import {
     listenToVenueQuotations,
@@ -202,7 +208,10 @@ function mapSheetBookingToRow(b, venueId) {
         eventDate,
         timing,
         status,
-        source: b.bookingSource || b.source || getColumnByAliases(columns, ["Source", "Booking Source"], b.sheetName ? `Google Sheet: ${b.sheetName}` : "Google Sheet"),
+        source: formatBookingSourceLabel({
+            source: b.bookingSource || b.source || getColumnByAliases(columns, ["Source", "Booking Source"], b.sheetName ? `Google Sheet: ${b.sheetName}` : "Google Sheet"),
+            isWalkIn: b.isWalkIn,
+        }),
         amount: numberFromAny(amountValue, 0),
         proof,
         voiceProofUrl: proof,
@@ -420,6 +429,8 @@ const BookingsPage = () => {
     const [firestoreBookings, setFirestoreBookings] = useState([]);
     const [legacyBookings, setLegacyBookings] = useState([]);
     const [quotationBookings, setQuotationBookings] = useState([]);
+    const loadDataAbortRef = useRef(null);
+    const loadDataGenRef = useRef(0);
     
     // Firestore Venue settings state
     const [venueData, setVenueData] = useState(null);
@@ -534,11 +545,18 @@ const BookingsPage = () => {
 
     const loadData = async (silent = false) => {
         if (!venueId) return;
+
+        loadDataAbortRef.current?.abort();
+        const controller = new AbortController();
+        loadDataAbortRef.current = controller;
+        const requestId = ++loadDataGenRef.current;
+
         if (!silent) setIsLoading(true);
         try {
             // 1. Fetch Venue details to retrieve dynamic pricing and catering menu cards
             const docRef = doc(db, "venues", venueId);
             const docSnap = await getDoc(docRef);
+            if (requestId !== loadDataGenRef.current) return;
             if (docSnap.exists()) {
                 const data = docSnap.data();
                 setVenueData(data);
@@ -552,13 +570,22 @@ const BookingsPage = () => {
             try {
                 let resData = { success: false, bookings: [] };
                 try {
-                    const liveResponse = await fetch("/api/live-google-sheet", { cache: "no-store" });
+                    const liveResponse = await fetch("/api/live-google-sheet", {
+                        cache: "no-store",
+                        signal: controller.signal,
+                    });
                     resData = await parseJsonResponse(liveResponse, "/api/live-google-sheet");
                 } catch (liveErr) {
+                    if (liveErr?.name === "AbortError") return;
                     console.warn("Live sheet route failed, falling back to /api/sync-bookings:", liveErr);
-                    const fallbackResponse = await fetch("/api/sync-bookings", { cache: "no-store" });
+                    const fallbackResponse = await fetch("/api/sync-bookings", {
+                        cache: "no-store",
+                        signal: controller.signal,
+                    });
                     resData = await parseJsonResponse(fallbackResponse, "/api/sync-bookings");
                 }
+
+                if (requestId !== loadDataGenRef.current) return;
 
                 const sheetRows = resData.bookings || resData.rows || [];
                 sheetRows.forEach((b) => {
@@ -566,13 +593,19 @@ const BookingsPage = () => {
                     if (mapped) list.push(mapped);
                 });
             } catch (apiErr) {
+                if (apiErr?.name === "AbortError") return;
                 console.warn("Could not load live Google Sheet bookings:", apiErr);
             }
-            setSheetBookings(list.reverse());
+            if (requestId === loadDataGenRef.current) {
+                setSheetBookings(list.reverse());
+            }
         } catch (err) {
+            if (err?.name === "AbortError") return;
             console.error("Error pulling database profiles: ", err);
         } finally {
-            if (!silent) setIsLoading(false);
+            if (requestId === loadDataGenRef.current && !silent) {
+                setIsLoading(false);
+            }
         }
     };
 
@@ -689,7 +722,10 @@ const BookingsPage = () => {
         const timer = setInterval(() => {
             loadData(true);
         }, 8000);
-        return () => clearInterval(timer);
+        return () => {
+            clearInterval(timer);
+            loadDataAbortRef.current?.abort();
+        };
     }, [venueId, venueLoading]);
 
     useEffect(() => {
@@ -1801,10 +1837,10 @@ const syncProofToGoogleSheet = async ({ bookingId, proofUrl, status, callSid, sh
                                                     </td>
                                                     <td className="p-5">
                                                         <span className={`text-[9px] font-black px-3.5 py-1.5 rounded-full uppercase tracking-wider border 
-                                                            ${booking.source.includes('Walk-in') 
+                                                            ${isWalkInBookingSource(booking)
                                                                 ? 'bg-primary-container text-on-primary-container border-primary/10' 
                                                                 : 'bg-secondary-container text-on-secondary-container border-secondary/10'}`}>
-                                                            {booking.source}
+                                                            {formatBookingSourceLabel(booking)}
                                                         </span>
                                                     </td>
                                                     <td className="p-5 text-center">
@@ -2463,7 +2499,7 @@ const syncProofToGoogleSheet = async ({ bookingId, proofUrl, status, callSid, sh
                                 <div>
                                     <div className="flex items-center gap-2 mb-1">
                                         <span className="text-[9px] font-black uppercase tracking-widest bg-white/20 px-2.5 py-1 rounded-full whitespace-nowrap">
-                                            {selectedDetailBooking.source}
+                                            {formatBookingSourceLabel(selectedDetailBooking)}
                                         </span>
                                         <span className="text-[9px] font-black uppercase tracking-widest bg-white/20 px-2.5 py-1 rounded-full whitespace-nowrap">
                                             {selectedDetailBooking.id}

@@ -22,11 +22,18 @@ export function mapBookingDocToRow(docId, data) {
     data.bookingSource === "walk-in" ||
     data.eventDetails?.source === "Walk-in ERP";
 
+  const rawSource = data.bookingSource ?? data.eventDetails?.source ?? data.source;
+  const sourceText =
+    rawSource && typeof rawSource === "object"
+      ? String(rawSource.label || rawSource.name || rawSource.type || rawSource.value || "")
+      : String(rawSource || "");
   const source = isWalkIn
     ? "Walk-in ERP"
-    : data.bookingSource === "online" || data.eventDetails?.source === "Online Portal"
-    ? "Online Portal"
-    : data.bookingSource || data.eventDetails?.source || "Online Portal";
+    : data.bookingSource === "online" ||
+        sourceText === "Online Portal" ||
+        sourceText.toLowerCase() === "online"
+      ? "Online Portal"
+      : sourceText.trim() || "Online Portal";
 
   return {
     docId,
